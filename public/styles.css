@@ -596,17 +596,33 @@ video {
   position: relative;
 }
 
+.sticky {
+  position: sticky;
+}
+
+.top-0 {
+  top: 0px;
+}
+
 .isolate {
   isolation: isolate;
+}
+
+.z-30 {
+  z-index: 30;
+}
+
+.col-start-1 {
+  grid-column-start: 1;
+}
+
+.row-start-1 {
+  grid-row-start: 1;
 }
 
 .mx-auto {
   margin-left: auto;
   margin-right: auto;
-}
-
-.mb-10 {
-  margin-bottom: 2.5rem;
 }
 
 .mb-4 {
@@ -625,6 +641,14 @@ video {
   display: flex;
 }
 
+.hidden {
+  display: none;
+}
+
+.h-24 {
+  height: 6rem;
+}
+
 .h-6 {
   height: 1.5rem;
 }
@@ -633,8 +657,16 @@ video {
   height: 100vh;
 }
 
-.min-h-screen {
-  min-height: 100vh;
+.h-8 {
+  height: 2rem;
+}
+
+.h-10 {
+  height: 2.5rem;
+}
+
+.h-5 {
+  height: 1.25rem;
 }
 
 .w-6 {
@@ -653,8 +685,20 @@ video {
   width: 100%;
 }
 
+.w-8 {
+  width: 2rem;
+}
+
 .max-w-xs {
   max-width: 20rem;
+}
+
+.max-w-7xl {
+  max-width: 80rem;
+}
+
+.flex-1 {
+  flex: 1 1 0%;
 }
 
 .shrink-0 {
@@ -677,6 +721,10 @@ video {
   justify-content: center;
 }
 
+.gap-2 {
+  gap: 0.5rem;
+}
+
 .overflow-auto {
   overflow: auto;
 }
@@ -685,17 +733,30 @@ video {
   overflow: hidden;
 }
 
+.bg-opacity-90 {
+  --tw-bg-opacity: 0.9;
+}
+
+.bg-clip-text {
+  -webkit-background-clip: text;
+          background-clip: text;
+}
+
+.fill-current {
+  fill: currentColor;
+}
+
 .stroke-current {
   stroke: currentColor;
 }
 
-.py-24 {
-  padding-top: 6rem;
-  padding-bottom: 6rem;
+.px-6 {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
 }
 
 .font-brand {
-  font-family: nunito, ui-sans-serif, system-ui;
+  font-family: DotGothic16, ui-sans-serif, system-ui;
 }
 
 .text-2xl {
@@ -703,22 +764,24 @@ video {
   line-height: 2rem;
 }
 
+.text-lg {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
 .font-bold {
   font-weight: 700;
-}
-
-.text-blue-500 {
-  --tw-text-opacity: 1;
-  color: rgb(59 130 246 / var(--tw-text-opacity));
-}
-
-.underline {
-  text-decoration-line: underline;
 }
 
 .antialiased {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.shadow-sm {
+  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
 .shadow-xl {
@@ -727,9 +790,54 @@ video {
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
-@media (min-width: 640px) {
-  .sm\:py-32 {
-    padding-top: 8rem;
-    padding-bottom: 8rem;
+.backdrop-blur {
+  --tw-backdrop-blur: blur(8px);
+  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+}
+
+.transition-shadow {
+  transition-property: box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.duration-100 {
+  transition-duration: 100ms;
+}
+
+.\[-webkit-text-fill-color\:transparent\] {
+  -webkit-text-fill-color: transparent;
+}
+
+.\[transform\:translate3d\(0\2c 0\2c 0\)\] {
+  transform: translate3d(0,0,0);
+}
+
+@media (min-width: 768px) {
+  .md\:text-2xl {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg\:px-8 {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+.\[\&\:\:selection\]\:bg-blue-700\/20::-moz-selection {
+  background-color: rgb(29 78 216 / 0.2);
+}
+
+.\[\&\:\:selection\]\:bg-blue-700\/20::selection {
+  background-color: rgb(29 78 216 / 0.2);
+}
+
+@supports(color:oklch(0% 0 0)) {
+  .\[\@supports\(color\:oklch\(0\%_0_0\)\)\]\:bg-\[linear-gradient\(90deg\2c oklch\(var\(--s\)\)_4\%\2c color-mix\(in_oklch\2c oklch\(var\(--s\)\)\2c oklch\(var\(--er\)\)\)_22\%\2c oklch\(var\(--p\)\)_45\%\2c color-mix\(in_oklch\2c oklch\(var\(--p\)\)\2c oklch\(var\(--a\)\)\)_67\%\2c oklch\(var\(--a\)\)_100\.2\%\)\] {
+    background-image: linear-gradient(90deg,oklch(var(--s)) 4%,color-mix(in oklch,oklch(var(--s)),oklch(var(--er))) 22%,oklch(var(--p)) 45%,color-mix(in oklch,oklch(var(--p)),oklch(var(--a))) 67%,oklch(var(--a)) 100.2%);
   }
 }
