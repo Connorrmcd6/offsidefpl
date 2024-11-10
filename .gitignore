@@ -1,0 +1,17 @@
+# Environment variables
+.env
+
+# Node modules
+node_modules/
+
+# Build directories
+bin
+
+# Temporary files
+tmp/
+
+# Compiled Go files
+*_templ.go
+
+# Pocketbase data
+pb_data/
