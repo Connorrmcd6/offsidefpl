@@ -1,12 +1,16 @@
 package views
 
 import (
+	"github.com/cmcd97/bytesize/app/components"
 	"github.com/cmcd97/bytesize/lib"
 	"github.com/pocketbase/pocketbase/models"
 )
 
 templ Profile(user *models.Record) {
 	@lib.BaseLayout() {
-		@lib.Navbar()
+		@components.Navbar()
+		<div id="profile-page-content" class="flex justify-center">
+			@components.Statbar()
+		</div>
 	}
 }
