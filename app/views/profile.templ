@@ -9,8 +9,13 @@ import (
 templ Profile(user *models.Record) {
 	@lib.BaseLayout() {
 		@components.Navbar()
-		<div id="profile-page-content" class="flex justify-center">
-			@components.Statbar()
+		<div id="profile-page-content" class="flex flex-col items-center">
+			<div id="stats" class="flex">
+				@components.Statbar(1, "Connor McDonald", "AllhitsNoMisses")
+			</div>
+			<div id="leagueTable" class="flex">
+				@components.LeagueTable()
+			</div>
 		</div>
 	}
 }
