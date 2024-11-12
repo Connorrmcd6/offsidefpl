@@ -11,7 +11,10 @@ templ Profile(user *models.Record) {
 		@components.Navbar()
 		<div id="profile-page-content" class="flex flex-col items-center">
 			<div id="stats" class="flex">
-				@components.Statbar(1, "Connor McDonald", "AllhitsNoMisses")
+				@components.Statbar(1, "Connor", "AllhitsNoMisses")
+			</div>
+			<div id="fines" class="flex">
+				@components.FinesTable()
 			</div>
 			<div id="leagueTable" class="flex">
 				@components.LeagueTable()

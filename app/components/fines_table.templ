@@ -1,0 +1,55 @@
+package components
+
+templ FinesTable() {
+	<div class="mb-10">
+		<p class="font-bold text-base-content">Cards</p>
+		<div class="w-72 flex items-center justify-center mb-2 join">
+			<button class="btn btn-outline btn-sm btn-primary join-item w-24">Submit</button>
+			<button class="btn btn-outline btn-sm btn-secondary join-item w-24">Nominate</button>
+			<button class="btn btn-outline btn-sm btn-accent join-item text-accent-content w-24">Rebound</button>
+			// <div>
+			// 	<span>Next Deadline: </span>
+			// 	<span class="countdown font-mono text-2xl">
+			// 		<span style="--value:10;"></span>
+			// 		:
+			// 		<span style="--value:24;"></span>
+			// 		:
+			// 		<span style="--value:${counter};"></span>
+			// 	</span>
+			// </div>
+		</div>
+		<div class="overflow-x-auto w-72 rounded-lg">
+			<table class="table table-xs">
+				<!-- head -->
+				<thead class="bg-primary text-primary-content font-bold">
+					<tr>
+						<th>Week</th>
+						<th>Reason</th>
+						<th>Deadline</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody class="bg-base-100">
+					<!-- row 1 -->
+					<tr>
+						<th>1</th>
+						<td>
+							Own Goal
+						</td>
+						<td>2024-10-10</td>
+						<td><button class="btn btn-xs btn-outline btn-primary">submit</button></td>
+					</tr>
+					<!-- row 2 -->
+					<tr>
+						<th>2</th>
+						<td>
+							Nomination
+						</td>
+						<td>2024-10-20</td>
+						<td><button class="btn btn-xs btn-outline btn-primary">submit</button></td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+}
