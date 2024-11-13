@@ -7,15 +7,11 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/cmcd97/bytesize/app/components"
+	"github.com/cmcd97/bytesize/app/components/types"
+	"github.com/cmcd97/bytesize/lib"
 	"github.com/labstack/echo/v5"
 )
-
-// FPLTeamResponse represents the relevant fields from the API response
-type FPLTeamResponse struct {
-	PlayerFirstName string `json:"player_first_name"`
-	PlayerLastName  string `json:"player_last_name"`
-	Name            string `json:"name"`
-}
 
 func FetchFplTeam(c echo.Context) error {
 	teamID := c.QueryParam("teamID")
@@ -42,10 +38,12 @@ func FetchFplTeam(c echo.Context) error {
 		return echo.NewHTTPError(resp.StatusCode, "Failed to fetch team data")
 	}
 
-	var teamData FPLTeamResponse
+	var teamData types.FPLTeamResponse
 	if err := json.Unmarshal(body, &teamData); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse team data: %v", err))
 	}
 
-	return c.JSON(http.StatusOK, teamData)
+	// return c.JSON(http.StatusOK, teamData)
+
+	return lib.Render(c, http.StatusOK, components.TeamCheck(teamData))
 }
