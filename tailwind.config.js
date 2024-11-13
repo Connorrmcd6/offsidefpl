@@ -39,6 +39,7 @@ module.exports = {
     extend: {},
     fontFamily: {
       'brand': ['DotGothic16', 'ui-sans-serif', 'system-ui'],
+      'small-text': ['Nunito Sans', 'ui-sans-serif', 'system-ui'],
   },
 
   plugins: [],

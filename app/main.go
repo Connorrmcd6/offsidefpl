@@ -15,6 +15,7 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 		return c.Redirect(303, "profile")
 	})
 	appGroup.GET("/profile", handlers.ProfileGet)
+	appGroup.GET("/fpl_team_id", handlers.FetchFplTeam)
 
 	e.Router.GET("/", func(c echo.Context) error {
 		return c.Redirect(303, "/app")
