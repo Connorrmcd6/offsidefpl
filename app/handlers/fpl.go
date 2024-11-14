@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	"github.com/cmcd97/bytesize/app/components"
-	"github.com/cmcd97/bytesize/app/components/types"
+	"github.com/cmcd97/bytesize/app/types"
 	"github.com/cmcd97/bytesize/lib"
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
@@ -39,7 +39,8 @@ func FetchFplTeam(c echo.Context) error {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("FPL API error: %s", string(body))
-		return echo.NewHTTPError(resp.StatusCode, "Failed to fetch team data")
+		errorMessage := "Failed to fetch team data"
+		return lib.Render(c, resp.StatusCode, components.ErrorAlert(errorMessage))
 	}
 
 	var teamData types.FPLTeamResponse

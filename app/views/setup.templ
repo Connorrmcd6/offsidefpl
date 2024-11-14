@@ -45,8 +45,11 @@ templ Setup() {
 								></path>
 							</svg>
 						</label>
+						<div id="error-container">
+							// @components.ErrorAlert("could not find team")
+						</div>
 						<div class="card-actions justify-end">
-							<button class="btn btn-primary" hx-target="#card-step" hx-get="/app/fpl_team_id" hx-include="[name='teamID']">Check Team</button>
+							<button class="btn btn-primary" hx-target="#card-step" hx-get="/app/fpl_team_id" hx-include="[name='teamID']" hx-target-error="#error-container">Check Team</button>
 						</div>
 					</div>
 				</div>

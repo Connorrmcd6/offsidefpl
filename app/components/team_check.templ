@@ -1,12 +1,12 @@
 package components
 
-import "github.com/cmcd97/bytesize/app/components/types"
+import "github.com/cmcd97/bytesize/app/types"
 
 templ TeamCheck(teamID string, resp types.FPLTeamResponse) {
 	<div>
 		<div class="card-body items-center text-center">
-			<h2 class="card-title pb-8">Is this you?</h2>
-			<div class="pb-5">
+			<h2 class="card-title pb-5">Is this your team?</h2>
+			<div class="pb-8">
 				<p class="font-bold text-primary text-2xl">{ resp.Name }</p>
 				<p class="text-sm ">{ resp.PlayerFirstName } { resp.PlayerLastName }</p>
 			</div>
