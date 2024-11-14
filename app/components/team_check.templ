@@ -2,7 +2,7 @@ package components
 
 import "github.com/cmcd97/bytesize/app/components/types"
 
-templ TeamCheck(resp types.FPLTeamResponse) {
+templ TeamCheck(teamID string, resp types.FPLTeamResponse) {
 	<div>
 		<div class="card-body items-center text-center">
 			<h2 class="card-title pb-8">Is this you?</h2>
@@ -11,7 +11,7 @@ templ TeamCheck(resp types.FPLTeamResponse) {
 				<p class="text-sm ">{ resp.PlayerFirstName } { resp.PlayerLastName }</p>
 			</div>
 			<div class="flex card-actions justify-end">
-				<button class="btn btn-primary">Yes</button>
+				<button class="btn btn-primary" name="teamID" value={ teamID } hx-post="/app/set_team_id">Yes</button>
 				<button class="btn btn-neutral">No</button>
 			</div>
 		</div>
