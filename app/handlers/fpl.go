@@ -54,12 +54,37 @@ func FetchFplTeam(c echo.Context) error {
 }
 
 func SetTeamID(c echo.Context) error {
+
 	teamID := c.FormValue("teamID")
 	log.Printf("Received teamID form value: %v", teamID)
+
+	firstName := c.FormValue("firstName")
+	log.Printf("Received fisrtName form value: %v", firstName)
+
+	lastName := c.FormValue("lastName")
+	log.Printf("Received lastName form value: %v", lastName)
+
+	teamName := c.FormValue("teamName")
+	log.Printf("Received teamName form value: %v", teamName)
 
 	if teamID == "" {
 		log.Printf("Error: Empty teamID received")
 		return echo.NewHTTPError(http.StatusBadRequest, "teamID is required")
+	}
+
+	if firstName == "" {
+		log.Printf("Error: Empty firstName received")
+		return echo.NewHTTPError(http.StatusBadRequest, "firstName is required")
+	}
+
+	if lastName == "" {
+		log.Printf("Error: Empty lastName received")
+		return echo.NewHTTPError(http.StatusBadRequest, "lastName is required")
+	}
+
+	if teamName == "" {
+		log.Printf("Error: Empty teamName received")
+		return echo.NewHTTPError(http.StatusBadRequest, "teamName is required")
 	}
 
 	// Convert teamID string to int
@@ -98,6 +123,12 @@ func SetTeamID(c echo.Context) error {
 	// Update teamID
 	record.Set("teamID", teamIDint)
 	log.Printf("Setting teamID to: %d for user: %s", teamIDint, record.Id)
+	record.Set("firstName", firstName)
+	log.Printf("Setting firstName to: %s for user: %s", firstName, record.Id)
+	record.Set("lastName", lastName)
+	log.Printf("Setting lastName to: %s for user: %s", lastName, record.Id)
+	record.Set("teamName", teamName)
+	log.Printf("Setting teamName to: %s for user: %s", teamName, record.Id)
 
 	// Save changes
 	if err := pb.Dao().SaveRecord(record); err != nil {

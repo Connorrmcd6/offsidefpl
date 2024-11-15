@@ -5,15 +5,36 @@ import "github.com/cmcd97/bytesize/app/types"
 templ TeamCheck(teamID string, resp types.FPLTeamResponse) {
 	<div>
 		<div class="card-body items-center text-center">
-			<h2 class="card-title pb-5">Is this your team?</h2>
-			<div class="pb-8">
-				<p class="font-bold text-primary text-2xl">{ resp.Name }</p>
-				<p class="text-sm ">{ resp.PlayerFirstName } { resp.PlayerLastName }</p>
-			</div>
-			<div class="flex card-actions justify-end">
-				<button class="btn btn-primary" name="teamID" value={ teamID } hx-post="/app/set_team_id">Yes</button>
-				<button class="btn btn-neutral">No</button>
-			</div>
+			<h2 class="card-title text-2xl mb-5">Is this your team?</h2>
+			<form id="team-confirm-form" class="w-full mb-5">
+				<input type="hidden" name="teamID" value={ teamID }/>
+				<input type="hidden" name="teamName" value={ resp.Name }/>
+				<input type="hidden" name="firstName" value={ resp.PlayerFirstName }/>
+				<input type="hidden" name="lastName" value={ resp.PlayerLastName }/>
+				<div class="text-center mb-5">
+					<p class="font-bold text-primary text-2xl">{ resp.Name }</p>
+					<p class="text-base-content">
+						Manager: { resp.PlayerFirstName } { resp.PlayerLastName }
+					</p>
+				</div>
+				<div class="flex gap-4 justify-center">
+					<button
+						type="submit"
+						class="btn btn-primary"
+						hx-post="/app/set_team_id"
+						hx-target="#team-confirm-form"
+						hx-swap="outerHTML"
+					>
+						Yes
+					</button>
+					<button
+						class="btn btn-ghost btn-outline"
+						hx-get="/app/profile"
+					>
+						No
+					</button>
+				</div>
+			</form>
 		</div>
 	</div>
 }
