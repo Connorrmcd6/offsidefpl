@@ -1,0 +1,27 @@
+package components
+
+import (
+	"github.com/cmcd97/bytesize/app/types"
+	"strconv"
+)
+
+templ LeagueSelector() {
+	<div class="flex flex-1 justify-end px-2" hx-get="/app/user_league_selection" hx-target="#league_dropdown" hx-swap="innerHTML" hx-trigger="load, click">
+		<div class="flex items-stretch">
+			<div class="dropdown dropdown-end">
+				<div tabindex="0" role="button" class="btn btn-ghost rounded-btn w-36">League</div>
+				<ul
+					id="league_dropdown"
+					tabindex="0"
+					class="menu dropdown-content bg-base-100 rounded-box z-[1] mt-4 w-52 p-2 shadow"
+				></ul>
+			</div>
+		</div>
+	</div>
+}
+
+templ LeagueList(leagues []types.UserLeagueSelection) {
+	for _, league := range leagues {
+		<li><a value={ strconv.Itoa(league.LeagueID) }>{ league.LeagueName }</a></li>
+	}
+}

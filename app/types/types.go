@@ -35,3 +35,14 @@ type Leagues struct {
 type FPLResponseLeagues struct {
 	Leagues Leagues `json:"leagues"`
 }
+
+type UserLeagueSelection struct {
+	LeagueID    int
+	UserID      string
+	AdminTeamID int
+	UserTeamID  int
+	LeagueName  string
+	IsLinked    bool
+	IsActive    bool
+	IsDefault   bool
+}
