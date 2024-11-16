@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/cmcd97/bytesize/app/components"
 	"github.com/cmcd97/bytesize/app/types"
@@ -43,14 +45,113 @@ func FetchFplTeam(c echo.Context) error {
 		return lib.Render(c, resp.StatusCode, components.ErrorAlert(errorMessage))
 	}
 
-	var teamData types.FPLTeamResponse
+	var teamData types.FPLUser
 	if err := json.Unmarshal(body, &teamData); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse team data: %v", err))
 	}
 
-	// return c.JSON(http.StatusOK, teamData)
+	var leagueResponse types.FPLResponseLeagues
+	if err := json.Unmarshal(body, &leagueResponse); err != nil {
+		return fmt.Errorf("failed to unmarshal response: %v", err)
+	}
+
+	// Access leagues data
+	leagueData := leagueResponse.Leagues
+	// Access classic leagues
+	classicLeagues := leagueData.Classic
+	// fmt.Println(classicLeagues)
+	teamIDInt, err := strconv.Atoi(teamID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to convert teamID to int: %v", err))
+	}
+	// add user leagues to user struct
+	userCustomLeagues := []types.FPLUserLeague{}
+	for _, league := range classicLeagues {
+		if league.LeagueType == "s" {
+			continue
+		}
+		// Parse date string and get year
+		dateStr := league.Created
+		t, err := time.Parse(time.RFC3339Nano, dateStr)
+		if err != nil {
+			// handle error
+		}
+		year := t.Year()
+		userCustomLeagues = append(userCustomLeagues, types.FPLUserLeague{
+			LeagueID:        league.LeagueID,
+			AdminTeamID:     0,
+			UserTeamID:      teamIDInt,
+			LeagueName:      lib.ReplaceSpacesWithUnderscores(league.Name),
+			SeasonStartYear: year,
+			UserID:          "temp",
+			IsLinked:        false,
+			IsActive:        false,
+		})
+	}
+
+	//store userCustomLeagues in a temporary cookie that expires in 5 minutes
+	cookie := new(http.Cookie)
+	cookie.Name = "userCustomLeagues"
+	cookie.Value = fmt.Sprintf("%v", userCustomLeagues)
+	cookie.Expires = time.Now().Add(5 * time.Minute)
+	c.SetCookie(cookie)
 
 	return lib.Render(c, http.StatusOK, components.TeamCheck(teamID, teamData))
+}
+
+func convertToJSON(input string) (string, error) {
+	// Log input
+	log.Printf("Converting to JSON, input: %s", input)
+
+	if input == "" {
+		return "", fmt.Errorf("empty input string")
+	}
+
+	// Remove outer brackets and split into items
+	input = strings.Trim(input, "[]")
+	items := strings.Split(input, "} {")
+
+	log.Printf("Split into %d items", len(items))
+	var jsonObjects []string
+
+	for i, item := range items {
+		// Clean up each item
+		item = strings.Trim(item, "{}")
+		fields := strings.Fields(item)
+
+		// Validate fields length
+		if len(fields) != 8 {
+			return "", fmt.Errorf("item %d has %d fields, expected 8: %v", i, len(fields), fields)
+		}
+
+		// Log fields for debugging
+		log.Printf("Processing item %d: %v", i, fields)
+
+		// Map to struct fields in order
+		jsonObj := fmt.Sprintf(`{
+            "LeagueID": %s,
+            "AdminTeamID": %s,
+            "UserTeamID": %s,
+            "LeagueName": "%s",
+            "SeasonStartYear": %s,
+            "UserID": "%s",
+            "IsLinked": %s,
+            "IsActive": %s
+        }`, fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], fields[7])
+
+		// Validate JSON format
+		var js map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonObj), &js); err != nil {
+			return "", fmt.Errorf("invalid JSON format for item %d: %v", i, err)
+		}
+
+		jsonObjects = append(jsonObjects, jsonObj)
+	}
+
+	result := "[" + strings.Join(jsonObjects, ",") + "]"
+	log.Printf("Conversion completed, result length: %d", len(result))
+
+	return result, nil
 }
 
 func SetTeamID(c echo.Context) error {
@@ -66,6 +167,30 @@ func SetTeamID(c echo.Context) error {
 
 	teamName := c.FormValue("teamName")
 	log.Printf("Received teamName form value: %v", teamName)
+
+	//get userCustomLeagues from cookie
+	cookie, err := c.Cookie("userCustomLeagues")
+	log.Printf("Received userCustomLeagues cookie")
+	if err != nil {
+		log.Printf("Error getting userCustomLeagues cookie: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to get userCustomLeagues cookie: %v", err))
+	}
+
+	jsonStr, err := convertToJSON(cookie.Value)
+	if err != nil {
+		log.Printf("Error converting userCustomLeagues cookie value to JSON: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to convert userCustomLeagues cookie value to JSON: %v", err))
+	}
+
+	log.Printf("Converted userCustomLeagues cookie value to JSON: %v", jsonStr)
+
+	userCustomLeagues := []types.FPLUserLeague{}
+	log.Print("Received userCustomLeagues cookie value")
+	err = json.Unmarshal([]byte(jsonStr), &userCustomLeagues)
+	if err != nil {
+		log.Printf("Error unmarshalling userCustomLeagues: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to unmarshal userCustomLeagues: %v", err))
+	}
 
 	if teamID == "" {
 		log.Printf("Error: Empty teamID received")
@@ -136,6 +261,30 @@ func SetTeamID(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to save team ID")
 	}
 	log.Printf("Successfully updated teamID for user: %s", record.Id)
+
+	// Update userCustomLeagues with user ID
+
+	collection, err := pb.Dao().FindCollectionByNameOrId("leagues")
+	if err != nil {
+		return err
+	}
+	for _, league := range userCustomLeagues {
+		league.UserID = record.Id
+		record := models.NewRecord(collection)
+		record.Set("leagueID", league.LeagueID)
+		record.Set("adminTeamID", league.AdminTeamID)
+		record.Set("teamID", league.UserTeamID)
+		record.Set("leagueName", league.LeagueName)
+		record.Set("seasonStartYear", league.SeasonStartYear)
+		record.Set("userID", league.UserID)
+		record.Set("isLinked", league.IsLinked)
+		record.Set("isActive", league.IsActive)
+		if err := pb.Dao().SaveRecord(record); err != nil {
+			log.Printf("Error saving record: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to league")
+		}
+		log.Printf("Successfully created league record for user: %s", record.Id)
+	}
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "Team ID updated successfully",

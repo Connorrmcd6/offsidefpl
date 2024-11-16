@@ -2,7 +2,7 @@ package components
 
 import "github.com/cmcd97/bytesize/app/types"
 
-templ TeamCheck(teamID string, resp types.FPLTeamResponse) {
+templ TeamCheck(teamID string, resp types.FPLUser) {
 	<div>
 		<div class="card-body items-center text-center">
 			<h2 class="card-title text-2xl mb-5">Is this your team?</h2>
@@ -24,6 +24,7 @@ templ TeamCheck(teamID string, resp types.FPLTeamResponse) {
 						hx-post="/app/set_team_id"
 						hx-target="#team-confirm-form"
 						hx-swap="outerHTML"
+						hx
 					>
 						Yes
 					</button>
