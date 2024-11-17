@@ -37,6 +37,7 @@ type FPLResponseLeagues struct {
 }
 
 type UserLeagueSelection struct {
+	ID          string
 	LeagueID    int
 	UserID      string
 	AdminTeamID int

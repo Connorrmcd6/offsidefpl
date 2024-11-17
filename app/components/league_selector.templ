@@ -1,25 +1,23 @@
 package components
 
-import (
-	"github.com/cmcd97/bytesize/app/types"
-	"strconv"
-)
+import "github.com/cmcd97/bytesize/app/types"
 
 templ LeagueSelector() {
-	<div class="flex flex-1 justify-end px-2" hx-get="/app/user_league_selection" hx-target="#league_dropdown" hx-swap="innerHTML" hx-trigger="load, click">
+	<div class="flex flex-1 justify-end px-2" hx-get="/app/user_league_selection" hx-target="#league_dropdown" hx-swap="innerHTML" hx-trigger="load">
 		<div class="flex items-stretch">
-			<div class="dropdown dropdown-end">
+			<div class="dropdown dropdown-end ">
 				<div tabindex="0" role="button" class="btn btn-ghost rounded-btn w-24">
 					League 
-					<svg width="12px" height="12px" class="hidden h-2 w-2 fill-current sm:inline-block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048">
+					<svg width="12px" height="12px" class="h-2 w-2 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048">
 						<path d="M1799 349l242 241-1017 1017L7 590l242-241 775 775 775-775z"></path>
 					</svg>
 				</div>
 				<ul
-					id="league_dropdown"
 					tabindex="0"
 					class="menu dropdown-content bg-base-100 rounded-box z-[1] mt-4 w-52 p-2 shadow"
-				></ul>
+				>
+					<div id="league_dropdown" class="overflow-y-auto max-h-96"></div>
+				</ul>
 			</div>
 		</div>
 	</div>
@@ -27,6 +25,31 @@ templ LeagueSelector() {
 
 templ LeagueList(leagues []types.UserLeagueSelection) {
 	for _, league := range leagues {
-		<li><a value={ strconv.Itoa(league.LeagueID) }>{ league.LeagueName }</a></li>
+		if !league.IsDefault {
+			<li
+				id={ league.ID }
+				hx-get="/app/set_default_league?leagueID="
+				hx-trigger="click"
+				hx-on::config-request="event.detail.path += this.id"
+			>
+				<a>{ league.LeagueName }</a>
+			</li>
+		} else {
+			<li class="bg-success rounded-lg" value={ league.ID }>
+				<a class="font-bold text-success-content">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke-width="2"
+						stroke="currentColor"
+						class="size-4"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"></path>
+					</svg>
+					{ league.LeagueName }
+				</a>
+			</li>
+		}
 	}
 }
