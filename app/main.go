@@ -19,6 +19,7 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	appGroup.POST("/set_team_id", handlers.SetTeamID)
 	appGroup.GET("/user_league_selection", handlers.UserLeaguesGet)
 	appGroup.GET("/set_default_league", handlers.SetDefaultLeague)
+	appGroup.POST("/intialise_league", handlers.InitialiseLeague)
 
 	e.Router.GET("/", func(c echo.Context) error {
 		return c.Redirect(303, "/app")

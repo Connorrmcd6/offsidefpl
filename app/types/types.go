@@ -8,7 +8,7 @@ type FPLUser struct {
 
 type FPLUserLeague struct {
 	LeagueID        int
-	AdminTeamID     int
+	AdminUserID     string
 	UserTeamID      int
 	LeagueName      string
 	SeasonStartYear int
@@ -40,7 +40,7 @@ type UserLeagueSelection struct {
 	ID          string
 	LeagueID    int
 	UserID      string
-	AdminTeamID int
+	AdminUserID string
 	UserTeamID  int
 	LeagueName  string
 	IsLinked    bool

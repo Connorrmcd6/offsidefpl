@@ -79,7 +79,7 @@ func FetchFplTeam(c echo.Context) error {
 		year := t.Year()
 		userCustomLeagues = append(userCustomLeagues, types.FPLUserLeague{
 			LeagueID:        league.LeagueID,
-			AdminTeamID:     0,
+			AdminUserID:     "temp",
 			UserTeamID:      teamIDInt,
 			LeagueName:      lib.ReplaceSpacesWithUnderscores(league.Name),
 			SeasonStartYear: year,
@@ -130,7 +130,7 @@ func convertToJSON(input string) (string, error) {
 		// Map to struct fields in order
 		jsonObj := fmt.Sprintf(`{
             "LeagueID": %s,
-            "AdminTeamID": %s,
+            "AdminUserID": "%s",
             "UserTeamID": %s,
             "LeagueName": "%s",
             "SeasonStartYear": %s,
@@ -272,7 +272,7 @@ func SetTeamID(c echo.Context) error {
 		league.UserID = record.Id
 		record := models.NewRecord(collection)
 		record.Set("leagueID", league.LeagueID)
-		record.Set("adminTeamID", league.AdminTeamID)
+		record.Set("adminUserID", league.AdminUserID)
 		record.Set("teamID", league.UserTeamID)
 		record.Set("leagueName", league.LeagueName)
 		record.Set("seasonStartYear", league.SeasonStartYear)
@@ -283,7 +283,7 @@ func SetTeamID(c echo.Context) error {
 			log.Printf("Error saving record: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to league")
 		}
-		log.Printf("Successfully created league record for user: %s", record.Id)
+		log.Printf("Successfully created league record for league: %s", record.Id)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{
