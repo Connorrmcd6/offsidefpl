@@ -9,16 +9,42 @@ import (
 templ Profile(user *models.Record) {
 	@lib.BaseLayout() {
 		@components.Navbar()
-		<div id="profile-page-content" class="flex flex-col items-center">
-			<div id="stats" class="flex">
-				@components.Statbar(1, "Connor", "AllhitsNoMisses")
-			</div>
-			<div id="fines" class="flex">
-				@components.FinesTable()
-			</div>
-			<div id="leagueTable" class="flex">
-				@components.LeagueTable()
+		<div id="profile-page-content" class="flex flex-col items-center" hx-get="/app/check_for_league" hx-target="this" hx-trigger="load"></div>
+	}
+}
+
+templ ProfilePage() {
+	<div id="stats" class="flex">
+		@components.Statbar(1, "Connor", "AllhitsNoMisses")
+	</div>
+	<div id="fines" class="flex">
+		@components.FinesTable()
+	</div>
+	<div id="leagueTable" class="flex">
+		@components.LeagueTable()
+	</div>
+}
+
+templ LeagueSetup() {
+	<div id="setup-page-content" class="flex justify-center mt-24">
+		<div class="card bg-base-100 w-96 shadow-xl">
+			<div id="card-step" class="card-body">
+				<div class="p-6 space-y-6">
+					<h2 class="text-2xl font-bold">Lets get started</h2>
+					// <p class="text-lg text-gray-600 font-medium">Let's get set up first!</p>
+					<ol class="list-decimal list-inside space-y-4 text-sm font-small-text">
+						<li class="flex items-start">
+							<span class="ml-2">1. Choose a league from the drop down at the top of the page</span>
+						</li>
+						<li class="flex items-start">
+							<span class="ml-2">2. If someone has already linked the league then you can join by clicking on it</span>
+						</li>
+						<li class="flex items-start">
+							<span class="ml-2">3. If you are the first person to link a league you will need to follow the prompts on screen, this will also make you the admin of the league</span>
+						</li>
+					</ol>
+				</div>
 			</div>
 		</div>
-	}
+	</div>
 }

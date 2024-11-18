@@ -6,7 +6,7 @@ templ InitLeague(leagueID string) {
 		<p>Would you like to link it and become the admin?</p>
 		<div class="card-actions justify-end">
 			<button class="btn btn-xs btn-primary" name="leagueInitID" type="submit" hx-post="/app/intialise_league" value={ leagueID }>Yes</button>
-			<button class="btn btn-xs ">No</button>
+			<button class="btn btn-xs" hx-get="/">No</button>
 		</div>
 	</div>
 }

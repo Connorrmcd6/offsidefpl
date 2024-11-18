@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cmcd97/bytesize/app/components"
 	"github.com/cmcd97/bytesize/app/types"
+	"github.com/cmcd97/bytesize/app/views"
 	"github.com/cmcd97/bytesize/lib"
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
@@ -295,5 +297,53 @@ func InitialiseLeague(c echo.Context) error {
 	}
 
 	log.Printf("Successfully initialized league with ID: %s", leagueID)
-	return nil
+	return c.Redirect(303, "/app")
+}
+
+const (
+	defaultLeagueFilter = "isDefault = TRUE && userID = {:userID}"
+)
+
+// CheckForLeague checks if the authenticated user has a default league.
+// If no default league exists, it redirects to league setup, otherwise to profile page.
+func CheckForLeague(c echo.Context) error {
+	// Get authenticated user
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		log.Printf("[ERROR] Auth failed for request: %v", c.Request().RequestURI)
+		return echo.NewHTTPError(http.StatusUnauthorized, "Authentication required")
+	}
+
+	// Get PocketBase instance
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("[ERROR] PocketBase instance unavailable for request: %v", c.Request().RequestURI)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Service temporarily unavailable")
+	}
+
+	// Set cache control headers
+	c.Response().Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+
+	// Search for default league
+	defaultLeague, err := pb.Dao().FindFirstRecordByFilter(
+		leaguesCollection,
+		defaultLeagueFilter,
+		dbx.Params{"userID": record.Id},
+	)
+
+	// Handle different error scenarios
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[INFO] No default league found for user %s", record.Id)
+			return lib.Render(c, http.StatusOK, views.LeagueSetup())
+		}
+		log.Printf("[ERROR] Database error while checking league: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to check league status")
+	}
+
+	if defaultLeague == nil {
+		return lib.Render(c, http.StatusOK, views.LeagueSetup())
+	}
+
+	return lib.Render(c, http.StatusOK, views.ProfilePage())
 }
