@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/cmcd97/bytesize/app/components"
 	"github.com/cmcd97/bytesize/app/types"
@@ -15,91 +19,124 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 )
 
-func FindLeaguesByFPLID(dao *daos.Dao, teamID int) ([]*models.Record, error) {
-	query := dao.RecordQuery("leagues").
-		AndWhere(dbx.HashExp{"teamID": teamID})
-
-	records := []*models.Record{}
-	if err := query.All(&records); err != nil {
-		return nil, err
-	}
-
-	return records, nil
-}
+const (
+	userLeaguesTimeout = 30 * time.Second
+	leaguesCollection  = "leagues"
+)
 
 func UserLeaguesGet(c echo.Context) error {
-	// Get auth record with error handling
+	_, cancel := context.WithTimeout(c.Request().Context(), userLeaguesTimeout)
+	defer cancel()
+
+	// Context validation outside transaction
 	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
 	if !ok || record == nil {
 		log.Printf("Failed to get auth record for request: %v", c.Request().RequestURI)
 		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 	}
-
 	teamID := record.Get("teamID")
 
-	// Get PocketBase instance from context
 	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
 	if !ok || pb == nil {
 		log.Printf("Error: PocketBase instance is nil or type assertion failed")
 		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection error")
 	}
 
-	// leagueStruct := []types.UserLeagueSelection{}
+	var leagueRecords []types.UserLeagueSelection
 
-	// retrieve multiple "articles" collection records by a custom dbx expression(s)
-	leagueRecordPointers, err := pb.Dao().FindRecordsByExpr("leagues",
-		dbx.NewExp("teamID = {:teamID} order by leagueName asc", dbx.Params{"teamID": teamID}))
-	if err != nil {
-		log.Printf("Error finding league records: %v", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to find league records")
-	}
-
-	leagueRecords := []types.UserLeagueSelection{}
-
-	// Iterate through found records and convert to struct
-	for _, record := range leagueRecordPointers {
-		league := types.UserLeagueSelection{
-			ID:          record.GetString("id"),
-			LeagueID:    record.GetInt("leagueID"),
-			UserID:      record.GetString("userID"),
-			AdminUserID: record.GetString("adminUserID"),
-			UserTeamID:  record.GetInt("teamID"),
-			LeagueName:  lib.ReplaceUnderscoresWithSpaces(record.GetString("leagueName")),
-			IsLinked:    record.GetBool("isLinked"),
-			IsActive:    record.GetBool("isActive"),
-			IsDefault:   record.GetBool("isDefault"),
+	// Run database operations in transaction
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		// Fetch league records
+		leagueRecordPointers, err := txDao.FindRecordsByExpr(leaguesCollection,
+			dbx.NewExp("teamID = {:teamID} order by leagueName asc",
+				dbx.Params{"teamID": teamID}))
+		if err != nil {
+			log.Printf("Error finding league records: %v", err)
+			return fmt.Errorf("find leagues: %w", err)
 		}
-		leagueRecords = append(leagueRecords, league)
+
+		// Convert records to struct
+		leagueRecords = make([]types.UserLeagueSelection, 0, len(leagueRecordPointers))
+		for _, record := range leagueRecordPointers {
+			league := types.UserLeagueSelection{
+				ID:          record.GetString("id"),
+				LeagueID:    record.GetInt("leagueID"),
+				UserID:      record.GetString("userID"),
+				AdminUserID: record.GetString("adminUserID"),
+				UserTeamID:  record.GetInt("teamID"),
+				LeagueName:  lib.ReplaceUnderscoresWithSpaces(record.GetString("leagueName")),
+				IsLinked:    record.GetBool("isLinked"),
+				IsActive:    record.GetBool("isActive"),
+				IsDefault:   record.GetBool("isDefault"),
+			}
+			leagueRecords = append(leagueRecords, league)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Transaction failed: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch league records")
 	}
 
-	return lib.Render(c, StatusOK, components.LeagueList(leagueRecords))
-
+	log.Printf("Successfully fetched %d league records", len(leagueRecords))
+	return lib.Render(c, http.StatusOK, components.LeagueList(leagueRecords))
 }
+
+const (
+	defaultTimeout     = 30 * time.Second
+	errMissingLeagueID = "leagueID parameter is required"
+	errUpdateFailed    = "failed to update default league: %v"
+)
+
+// SetDefaultLeague handles setting a league as default and managing admin status
+// @Summary Set default league
+// @Description Sets a league as default and handles initialization if required
+// @Tags leagues
+// @Accept json
+// @Produce html
+// @Param leagueID query string true "League ID"
+// @Success 200 {object} components.LeagueList
+// @Failure 400 {object} echo.HTTPError
+// @Failure 500 {object} echo.HTTPError
+// @Router /leagues/default [put]
 func SetDefaultLeague(c echo.Context) error {
+	_, cancel := context.WithTimeout(c.Request().Context(), defaultTimeout)
+	defer cancel()
 
-	// Get leagueID from query parameters
+	log.Printf("Setting default league - Request started")
+
+	// Validate input
 	leagueID := c.QueryParam("leagueID")
-
 	if leagueID == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "leagueID parameter is required")
+		log.Printf("Error: Missing leagueID parameter")
+		return echo.NewHTTPError(http.StatusBadRequest, errMissingLeagueID)
 	}
+	log.Printf("Processing league ID: %s", leagueID)
 
+	// Update default league
 	leagueRecords, hasAdmin, err := updateDefaultLeague(c, leagueID)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to update default league")
+		log.Printf("Error updating default league: %v", err)
+		return echo.NewHTTPError(
+			http.StatusInternalServerError,
+			fmt.Sprintf(errUpdateFailed, err),
+		)
 	}
 
-	// if hasAdmin is false it means the user has to intialize the league
+	// Handle league initialization if no admin exists
 	if !hasAdmin {
-		lib.Render(c, StatusOK, components.InitLeague(leagueID))
+		log.Printf("League %s requires initialization", leagueID)
+		return lib.Render(c, http.StatusOK, components.InitLeague(leagueID))
 	}
 
-	return lib.Render(c, StatusOK, components.LeagueList(leagueRecords))
-
+	log.Printf("Successfully set default league: %s", leagueID)
+	return lib.Render(c, http.StatusOK, components.LeagueList(leagueRecords))
 }
 
 func updateDefaultLeague(c echo.Context, leagueID string) ([]types.UserLeagueSelection, bool, error) {
-	// Get auth record with error handling
+	// Context validation outside transaction
 	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
 	if !ok || record == nil {
 		log.Printf("Failed to get auth record for request: %v", c.Request().RequestURI)
@@ -107,86 +144,110 @@ func updateDefaultLeague(c echo.Context, leagueID string) ([]types.UserLeagueSel
 	}
 	authUserID := record.Id
 
-	// Get PocketBase instance from context
 	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
 	if !ok || pb == nil {
 		log.Printf("Error: PocketBase instance is nil or type assertion failed")
 		return []types.UserLeagueSelection{}, true, echo.NewHTTPError(http.StatusInternalServerError, "Database connection error")
 	}
 
-	// get old default league and set to false
-	defaultLeaguePointer, err := pb.Dao().FindFirstRecordByFilter(
-		"leagues", "isDefault = True && userID = {:userID}",
-		dbx.Params{"userID": authUserID},
-	)
+	var hasAdmin bool
+	var leagueRecords []types.UserLeagueSelection
 
-	if err != nil {
-		log.Printf("Error finding default league record: %v", err)
-		return []types.UserLeagueSelection{}, true, echo.NewHTTPError(http.StatusInternalServerError, "Failed to find default league record")
-	}
-
-	defaultLeagueRecord, err := pb.Dao().FindRecordById("leagues", defaultLeaguePointer.Id)
-	if err != nil {
-		log.Printf("Error finding default league record: %v", err)
-		return []types.UserLeagueSelection{}, true, err
-	}
-	defaultLeagueRecord.Set("isDefault", false)
-	if err := pb.Dao().SaveRecord(defaultLeagueRecord); err != nil {
-		return []types.UserLeagueSelection{}, true, err
-	}
-
-	// update new default league and set to true
-	newDefaultLeagueRecord, err := pb.Dao().FindRecordById("leagues", leagueID)
-	if err != nil {
-		log.Printf("Error finding new default league record: %v", err)
-	}
-
-	newDefaultLeagueRecord.Set("isDefault", true)
-	if err := pb.Dao().SaveRecord(newDefaultLeagueRecord); err != nil {
-		return []types.UserLeagueSelection{}, true, err
-	}
-
-	hasAdmin := false
-	newDefaultLeagueRecordHasAdmin := newDefaultLeagueRecord.GetString("adminUserID")
-	if newDefaultLeagueRecordHasAdmin != "temp" {
-		hasAdmin = true
-	}
-
-	// retrieve multiple "articles" collection records by a custom dbx expression(s)
-	leagueRecordPointers, err := pb.Dao().FindRecordsByExpr("leagues",
-		dbx.NewExp("userID = {:userID} order by leagueName asc", dbx.Params{"userID": authUserID}))
-	if err != nil {
-		log.Printf("Error finding league records: %v", err)
-		return []types.UserLeagueSelection{}, true, echo.NewHTTPError(http.StatusInternalServerError, "Failed to find league records")
-	}
-
-	leagueRecords := []types.UserLeagueSelection{}
-
-	// Iterate through found records and convert to struct
-	for _, record := range leagueRecordPointers {
-		league := types.UserLeagueSelection{
-			ID:          record.GetString("id"),
-			LeagueID:    record.GetInt("leagueID"),
-			UserID:      record.GetString("userID"),
-			AdminUserID: record.GetString("adminUserID"),
-			UserTeamID:  record.GetInt("teamID"),
-			LeagueName:  lib.ReplaceUnderscoresWithSpaces(record.GetString("leagueName")),
-			IsLinked:    record.GetBool("isLinked"),
-			IsActive:    record.GetBool("isActive"),
-			IsDefault:   record.GetBool("isDefault"),
+	// Run all database operations in a single transaction
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		// Find and update existing default league
+		defaultLeague, err := txDao.FindFirstRecordByFilter(
+			"leagues",
+			"isDefault = true && userID = {:userID}",
+			dbx.Params{"userID": authUserID},
+		)
+		if err != nil && !strings.Contains(err.Error(), "no rows") {
+			return fmt.Errorf("database error: %w", err)
 		}
-		leagueRecords = append(leagueRecords, league)
+
+		if defaultLeague != nil {
+			defaultLeague.Set("isDefault", false)
+			if err := txDao.SaveRecord(defaultLeague); err != nil {
+				return fmt.Errorf("failed to update old default league: %w", err)
+			}
+			log.Printf("Removed default status from league %s", defaultLeague.Id)
+		}
+
+		// Update new league record
+		league, err := txDao.FindRecordById("leagues", leagueID)
+		if err != nil {
+			return fmt.Errorf("failed to find new league: %w", err)
+		}
+
+		league.Set("isDefault", true)
+		league.Set("isActive", true)
+		league.Set("isLinked", true)
+
+		// Check for existing admin
+		fplLeagueID := league.GetInt("leagueID")
+		existingAdmin, err := txDao.FindFirstRecordByFilter(
+			"leagues",
+			"adminUserID != 'temp' && leagueID = {:leagueID}",
+			dbx.Params{"leagueID": fplLeagueID},
+		)
+		if err != nil && !strings.Contains(err.Error(), "no rows") {
+			return fmt.Errorf("failed to check admin status: %w", err)
+		}
+
+		if existingAdmin != nil {
+			adminID := existingAdmin.GetString("adminUserID")
+			if adminID != "temp" {
+				hasAdmin = true
+				league.Set("adminUserID", adminID)
+				log.Printf("Setting admin ID %s for league %s", adminID, leagueID)
+			}
+		}
+
+		if err := txDao.SaveRecord(league); err != nil {
+			return fmt.Errorf("failed to save league: %w", err)
+		}
+
+		// Get all user leagues
+		leagueRecordPointers, err := txDao.FindRecordsByExpr("leagues",
+			dbx.NewExp("userID = {:userID} order by leagueName asc", dbx.Params{"userID": authUserID}))
+		if err != nil {
+			return fmt.Errorf("failed to find league records: %w", err)
+		}
+
+		// Convert records to struct
+		leagueRecords = make([]types.UserLeagueSelection, 0, len(leagueRecordPointers))
+		for _, record := range leagueRecordPointers {
+			league := types.UserLeagueSelection{
+				ID:          record.GetString("id"),
+				LeagueID:    record.GetInt("leagueID"),
+				UserID:      record.GetString("userID"),
+				AdminUserID: record.GetString("adminUserID"),
+				UserTeamID:  record.GetInt("teamID"),
+				LeagueName:  lib.ReplaceUnderscoresWithSpaces(record.GetString("leagueName")),
+				IsLinked:    record.GetBool("isLinked"),
+				IsActive:    record.GetBool("isActive"),
+				IsDefault:   record.GetBool("isDefault"),
+			}
+			leagueRecords = append(leagueRecords, league)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Transaction failed: %v", err)
+		return []types.UserLeagueSelection{}, hasAdmin, err
 	}
 
+	log.Printf("Successfully updated league %s", leagueID)
 	return leagueRecords, hasAdmin, nil
-
 }
 
 func InitialiseLeague(c echo.Context) error {
 	leagueID := c.FormValue("leagueInitID")
 	log.Printf("Initializing league with ID: %s", leagueID)
 
-	// Get auth record with error handling
+	// Context validation outside transaction
 	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
 	if !ok || record == nil {
 		log.Printf("Failed to get auth record for request: %v", c.Request().RequestURI)
@@ -195,7 +256,6 @@ func InitialiseLeague(c echo.Context) error {
 	authUserID := record.Id
 	log.Printf("Auth record retrieved successfully for user ID: %s", authUserID)
 
-	// Get PocketBase instance from context
 	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
 	if !ok || pb == nil {
 		log.Printf("Error: PocketBase instance is nil or type assertion failed")
@@ -203,25 +263,37 @@ func InitialiseLeague(c echo.Context) error {
 	}
 	log.Printf("PocketBase instance retrieved successfully")
 
-	// update new default league and set to true
-	newLeagueRecord, err := pb.Dao().FindRecordById("leagues", leagueID)
+	// Run database operations in transaction
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		// Find league record
+		newLeagueRecord, err := txDao.FindRecordById("leagues", leagueID)
+		if err != nil {
+			log.Printf("Error finding league record: %v", err)
+			return fmt.Errorf("failed to find league: %w", err)
+		}
+		log.Printf("Found league record with ID: %s", leagueID)
+
+		// Update league settings
+		newLeagueRecord.Set("isDefault", true)
+		newLeagueRecord.Set("isActive", true)
+		newLeagueRecord.Set("isLinked", true)
+		newLeagueRecord.Set("adminUserID", authUserID)
+		log.Printf("Updated league record fields for league ID: %s", leagueID)
+
+		// Save changes within transaction
+		if err := txDao.SaveRecord(newLeagueRecord); err != nil {
+			log.Printf("Error saving league record: %v", err)
+			return fmt.Errorf("failed to save league: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		log.Printf("Error finding new default league record: %v", err)
+		log.Printf("Transaction failed: %v", err)
 		return err
 	}
-	log.Printf("Found league record with ID: %s", leagueID)
 
-	newLeagueRecord.Set("isDefault", true)
-	newLeagueRecord.Set("isActive", true)
-	newLeagueRecord.Set("isLinked", true)
-	newLeagueRecord.Set("adminUserID", authUserID)
-	log.Printf("Updated league record fields for league ID: %s", leagueID)
-
-	if err := pb.Dao().SaveRecord(newLeagueRecord); err != nil {
-		log.Printf("Error saving league record: %v", err)
-		return err
-	}
 	log.Printf("Successfully initialized league with ID: %s", leagueID)
-
 	return nil
 }

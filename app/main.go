@@ -12,7 +12,7 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	appGroup := e.Router.Group("/app", middleware.LoadAuthContextFromCookie(pb), middleware.AuthGuard)
 
 	appGroup.GET("", func(c echo.Context) error {
-		return c.Redirect(303, "profile")
+		return c.Redirect(303, "/app/profile")
 	})
 	appGroup.GET("/profile", handlers.ProfileGet)
 	appGroup.GET("/fpl_team_id", handlers.FetchFplTeam)
