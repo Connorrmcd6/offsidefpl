@@ -9,7 +9,7 @@ import (
 templ Profile(user *models.Record) {
 	@lib.BaseLayout() {
 		@components.Navbar()
-		<div id="profile-page-content" class="flex flex-col items-center" hx-get="/app/check_for_league" hx-target="this" hx-trigger="load"></div>
+		<div id="page-content" class="flex flex-col items-center" hx-get="/app/check_for_league" hx-target="this" hx-swap="innerHTML" hx-trigger="load"></div>
 	}
 }
 
