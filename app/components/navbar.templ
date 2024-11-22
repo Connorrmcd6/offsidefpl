@@ -5,7 +5,7 @@ templ Navbar() {
 		<nav class="navbar w-full h-24">
 			<div id="nav-content" class="flex-1 mx-auto max-w-7xl px-6 lg:px-8">
 				<div class="flex-1">
-					<a alt="logo" class="btn btn-ghost normal-case px-2 sm:px-4">
+					<a alt="logo" class="btn btn-ghost normal-case px-2 sm:px-4" hx-get="/app/profile" hx-target="#home-page">
 						<img
 							src="/public/icon.png"
 							class="h-6 w-auto sm:h-8 md:h-10 object-contain"
