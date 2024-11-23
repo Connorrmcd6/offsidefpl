@@ -47,3 +47,18 @@ type UserLeagueSelection struct {
 	IsActive    bool
 	IsDefault   bool
 }
+
+type Event struct {
+	DeadlineTime string `json:"deadline_time"`
+}
+
+type Player struct {
+	PlayerID   string `json:"id"`
+	TeamID     string `json:"team"`
+	PlayerName string `json:"web_name"`
+}
+
+type FPLResponse struct {
+	Events  []Event  `json:"events"`
+	Players []Player `json:"elements"`
+}

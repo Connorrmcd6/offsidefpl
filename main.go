@@ -5,6 +5,7 @@ import (
 
 	"github.com/cmcd97/bytesize/app"
 	"github.com/cmcd97/bytesize/auth"
+	"github.com/cmcd97/bytesize/lib"
 	"github.com/cmcd97/bytesize/middleware"
 	"github.com/labstack/echo/v5"
 
@@ -37,6 +38,8 @@ func main() {
 		auth.RegisterRegisterRoutes(e, *authGroup)
 
 		app.InitAppRoutes(e, pb)
+
+		lib.GetAllPlayers(e, pb)
 		return nil
 	})
 
