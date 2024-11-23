@@ -49,16 +49,20 @@ type UserLeagueSelection struct {
 }
 
 type Event struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
 	DeadlineTime string `json:"deadline_time"`
 }
 
+// Player represents an FPL player
 type Player struct {
-	PlayerID   string `json:"id"`
-	TeamID     string `json:"team"`
-	PlayerName string `json:"web_name"`
+	ID      int    `json:"id"`
+	Team    int    `json:"team"`
+	WebName string `json:"web_name"`
 }
 
+// FPLResponse represents the full API response
 type FPLResponse struct {
-	Events  []Event  `json:"events"`
-	Players []Player `json:"elements"`
+	Events   []Event  `json:"events"`
+	Elements []Player `json:"elements"`
 }
