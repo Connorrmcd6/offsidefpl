@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/cmcd97/bytesize/app/types"
+	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
@@ -21,6 +23,7 @@ const (
 )
 
 func GetAllPlayers(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+	log.Printf("checking players...")
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -45,6 +48,7 @@ func GetAllPlayers(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 }
 
 func getDBState(pb *pocketbase.PocketBase) (*int, int, error) {
+	log.Printf("checking db state...")
 	type QueryResponse struct {
 		Count              int  `db:"count"`
 		MaxSeasonStartYear *int `db:"maxSeasonStartYear"`
@@ -59,6 +63,7 @@ func getDBState(pb *pocketbase.PocketBase) (*int, int, error) {
 }
 
 func fetchFPLData(ctx context.Context) (*types.FPLResponse, error) {
+	log.Printf("fetching current players...")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, FPLEndpoint, nil)
 	if err != nil {
 		return nil, err
@@ -84,6 +89,7 @@ func fetchFPLData(ctx context.Context) (*types.FPLResponse, error) {
 }
 
 func processPlayers(pb *pocketbase.PocketBase, fplData *types.FPLResponse, maxYear *int) error {
+	log.Printf("processing players...")
 	if len(fplData.Events) == 0 {
 		return fmt.Errorf("no events found in FPL data")
 	}
@@ -165,6 +171,7 @@ func processPlayers(pb *pocketbase.PocketBase, fplData *types.FPLResponse, maxYe
 }
 
 func saveRecords(pb *pocketbase.PocketBase, records []*models.Record) error {
+	log.Printf("saving players updates...")
 	var wg sync.WaitGroup
 	errorsChan := make(chan error, len(records))
 
@@ -189,4 +196,91 @@ func saveRecords(pb *pocketbase.PocketBase, records []*models.Record) error {
 	}
 
 	return nil
+}
+
+func GetAllFixtureEvents(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+	log.Printf("checking db state...")
+	type QueryResponse struct {
+		Count int `db:"count"`
+	}
+	var qr QueryResponse
+
+	err := pb.Dao().DB().
+		NewQuery("SELECT count(*) as count FROM events").
+		One(&qr)
+
+	if err != nil {
+		return fmt.Errorf("failed to get DB state: %w", err)
+	}
+
+	if qr.Count > 0 {
+		fmt.Println("Events already exist in the database")
+		return nil
+	}
+
+	// get all events where finished is true
+	endpoint := "https://fantasy.premierleague.com/api/fixtures/"
+
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch team: %v", err))
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
+	}
+
+	var Fixtures []types.FixtureStats
+	if err := json.Unmarshal(body, &Fixtures); err != nil {
+		fmt.Print(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse team data: %v", err))
+	}
+
+	collection, err := pb.Dao().FindCollectionByNameOrId("events")
+	if err != nil {
+		return fmt.Errorf("error finding collection: %w", err)
+	}
+
+	// Process fixtures
+
+	for _, fixture := range Fixtures {
+		if !fixture.Finished {
+			continue
+		}
+
+		for _, stat := range fixture.Stats {
+			// Process home team stats
+			for _, home := range stat.Home {
+				record := models.NewRecord(collection)
+				record.Set("fixtureID", fixture.FixtureID)
+				record.Set("gameweek", fixture.Gameweek)
+				record.Set("playerID", home.Element)
+				record.Set("eventType", string(stat.Identifier))
+				record.Set("eventValue", home.Value)
+
+				if err := pb.Dao().SaveRecord(record); err != nil {
+					return fmt.Errorf("error saving home record: %w", err)
+				}
+			}
+
+			// Process away team stats
+			for _, away := range stat.Away {
+				record := models.NewRecord(collection)
+				record.Set("fixtureID", fixture.FixtureID)
+				record.Set("gameweek", fixture.Gameweek)
+				record.Set("playerID", away.Element)
+				record.Set("eventType", string(stat.Identifier))
+				record.Set("eventValue", away.Value)
+
+				if err := pb.Dao().SaveRecord(record); err != nil {
+					return fmt.Errorf("error saving away record: %w", err)
+				}
+			}
+		}
+	}
+
+	return nil
+
 }

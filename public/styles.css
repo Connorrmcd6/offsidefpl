@@ -982,6 +982,10 @@ video {
   -webkit-text-fill-color: transparent;
 }
 
+.\[i\:end\] {
+  i: end;
+}
+
 .\[transform\:translate3d\(0\2c 0\2c 0\)\] {
   transform: translate3d(0,0,0);
 }

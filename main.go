@@ -40,6 +40,7 @@ func main() {
 		app.InitAppRoutes(e, pb)
 
 		lib.GetAllPlayers(e, pb)
+		lib.GetAllFixtureEvents(e, pb)
 		return nil
 	})
 
