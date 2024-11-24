@@ -41,6 +41,7 @@ func main() {
 
 		lib.GetAllPlayers(e, pb)
 		lib.GetAllFixtureEvents(e, pb)
+		lib.GetAllFixtures(e, pb)
 		return nil
 	})
 

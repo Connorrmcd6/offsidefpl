@@ -139,3 +139,11 @@ func (f *FixtureStats) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+type Fixtures struct {
+	FixtureID  int    `json:"id"`
+	Gameweek   int    `json:"event"`
+	Kickoff    string `json:"kickoff_time"`
+	HomeTeamID int    `json:"team_h"`
+	AwayTeamID int    `json:"team_a"`
+}

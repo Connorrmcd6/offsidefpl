@@ -284,3 +284,64 @@ func GetAllFixtureEvents(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	return nil
 
 }
+
+func GetAllFixtures(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+	log.Printf("checking db state...")
+	type QueryResponse struct {
+		Count int `db:"count"`
+	}
+	var qr QueryResponse
+
+	err := pb.Dao().DB().
+		NewQuery("SELECT count(*) as count FROM fixtures").
+		One(&qr)
+
+	if err != nil {
+		return fmt.Errorf("failed to get DB state: %w", err)
+	}
+
+	if qr.Count > 0 {
+		fmt.Println("fixtures already exist in the database")
+		return nil
+	}
+
+	// get all events where finished is true
+	endpoint := "https://fantasy.premierleague.com/api/fixtures/"
+
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch team: %v", err))
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
+	}
+
+	var Fixtures []types.Fixtures
+	if err := json.Unmarshal(body, &Fixtures); err != nil {
+		fmt.Print(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse team data: %v", err))
+	}
+
+	collection, err := pb.Dao().FindCollectionByNameOrId("fixtures")
+	if err != nil {
+		return fmt.Errorf("error finding collection: %w", err)
+	}
+
+	for _, fixtures := range Fixtures {
+		record := models.NewRecord(collection)
+		record.Set("fixtureID", fixtures.FixtureID)
+		record.Set("gameweek", fixtures.Gameweek)
+		record.Set("kickoff", fixtures.Kickoff)
+		record.Set("homeTeamID", fixtures.HomeTeamID)
+		record.Set("awayTeamID", fixtures.AwayTeamID)
+
+		if err := pb.Dao().SaveRecord(record); err != nil {
+			return fmt.Errorf("error saving record: %w", err)
+		}
+	}
+
+	return nil
+}

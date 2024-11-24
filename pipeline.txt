@@ -2,3 +2,6 @@
 2. fetch all player ids with https://fantasy.premierleague.com/api/bootstrap-static/ and look a the "elements" list, do an upsert of this with each gameweek to ensure that any loans, transfers etc are taken into account - add this to players collection
 3. after each week use the https://fantasy.premierleague.com/api/fixtures/ to record all events (OGS, red cards, missed penalties) in the events collection with player id included
 4. to capture results we use the https://fantasy.premierleague.com/api/entry/{team-id}/event/{GW}/picks/ endpoint and store this in the results collection 
+
+
+the weekly pipeline needs to make sure all fpl data is updated, such as players being in the correct teams etc
