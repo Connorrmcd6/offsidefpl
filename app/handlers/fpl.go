@@ -286,7 +286,106 @@ func SetTeamID(c echo.Context) error {
 		log.Printf("Successfully created league record for league: %s", record.Id)
 	}
 
+	allGameweekHistory, err := getTeamGameweekHistory(c, teamIDint)
+	if err != nil {
+		log.Printf("Error fetching gameweek history: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch gameweek history")
+	}
+
+	// fmt.Println(allGameweekHistory)
+
+	err = writeGameweekHistory(pb, teamIDint, record.Id, allGameweekHistory)
+	if err != nil {
+		log.Printf("Error writing gameweek history: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to write gameweek history")
+	}
+
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "Team ID updated successfully",
 	})
+}
+
+func getTeamGameweekHistory(c echo.Context, teamID int) ([]types.GameweekHistory, error) {
+	const (
+		baseEndpoint = "https://fantasy.premierleague.com/api/entry/%d/event/%d/picks/"
+		httpTimeout  = 10 * time.Second
+	)
+
+	client := &http.Client{Timeout: httpTimeout}
+	var allHistory []types.GameweekHistory
+	gameweek := 1
+
+	for {
+		endpoint := fmt.Sprintf(baseEndpoint, teamID, gameweek)
+
+		req, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("fetching gameweek %d: %w", gameweek, err)
+		}
+		defer resp.Body.Close()
+
+		// Break loop if we get a 404
+		if resp.StatusCode == http.StatusNotFound {
+			break
+		}
+
+		// Handle other error status codes
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("unexpected status code %d for gameweek %d", resp.StatusCode, gameweek)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("reading response for gameweek %d: %w", gameweek, err)
+		}
+
+		var history types.GameweekHistory
+		if err := json.Unmarshal(body, &history); err != nil {
+			return nil, fmt.Errorf("parsing gameweek %d: %w", gameweek, err)
+		}
+
+		allHistory = append(allHistory, history)
+		gameweek++
+
+		// Add small delay to avoid rate limiting
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return allHistory, nil
+}
+
+func writeGameweekHistory(pb *pocketbase.PocketBase, teamID int, authUserID string, history []types.GameweekHistory) error {
+	// Get collection
+	collection, err := pb.Dao().FindCollectionByNameOrId("results")
+	if err != nil {
+		return fmt.Errorf("finding collection: %w", err)
+	}
+
+	// Save records
+	for _, h := range history {
+		record := models.NewRecord(collection)
+		record.Set("gameweek", h.GameweekHistrory.Gameweek)
+		record.Set("userID", authUserID)
+		record.Set("teamID", teamID)
+		record.Set("points", h.GameweekHistrory.Points)
+		record.Set("transfers", h.GameweekHistrory.Transfers)
+		record.Set("hits", h.GameweekHistrory.TransferCost/4)
+		record.Set("benchPoints", h.GameweekHistrory.BenchPoints)
+		record.Set("activeChip", h.ActiveChip)
+		for _, p := range h.Players {
+			positionField := fmt.Sprintf("pos_%d", p.Position)
+			record.Set(positionField, p.PlayerID)
+		}
+
+		if err := pb.Dao().SaveRecord(record); err != nil {
+			return fmt.Errorf("saving record: %w", err)
+		}
+	}
+
+	return nil
 }

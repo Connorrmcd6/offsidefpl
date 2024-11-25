@@ -147,3 +147,22 @@ type Fixtures struct {
 	HomeTeamID int    `json:"team_h"`
 	AwayTeamID int    `json:"team_a"`
 }
+
+type GameweekHistory struct {
+	GameweekHistrory GameweekHistrory    `json:"entry_history"`
+	ActiveChip       string              `json:"active_chip"`
+	Players          []GameweekSelection `json:"picks"`
+}
+
+type GameweekHistrory struct {
+	Gameweek     int `json:"event"`
+	Points       int `json:"points"`
+	Transfers    int `json:"event_transfers"`
+	TransferCost int `json:"event_transfers_cost"`
+	BenchPoints  int `json:"points_on_bench"`
+}
+
+type GameweekSelection struct {
+	PlayerID int `json:"element"`
+	Position int `json:"position"`
+}
