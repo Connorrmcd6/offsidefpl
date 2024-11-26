@@ -92,17 +92,6 @@ const (
 	errUpdateFailed    = "failed to update default league: %v"
 )
 
-// SetDefaultLeague handles setting a league as default and managing admin status
-// @Summary Set default league
-// @Description Sets a league as default and handles initialization if required
-// @Tags leagues
-// @Accept json
-// @Produce html
-// @Param leagueID query string true "League ID"
-// @Success 200 {object} components.LeagueList
-// @Failure 400 {object} echo.HTTPError
-// @Failure 500 {object} echo.HTTPError
-// @Router /leagues/default [put]
 func SetDefaultLeague(c echo.Context) error {
 	_, cancel := context.WithTimeout(c.Request().Context(), defaultTimeout)
 	defer cancel()

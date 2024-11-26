@@ -166,3 +166,14 @@ type GameweekSelection struct {
 	PlayerID int `json:"element"`
 	Position int `json:"position"`
 }
+
+type CardHistory struct {
+	TeamID          int
+	UserID          string
+	NominatorTeamID int
+	NominatorUserID string
+	Gameweek        int
+	IsCompleted     bool
+	AdminVerified   bool
+	Type            string
+}
