@@ -1,6 +1,8 @@
 package types
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type FPLUser struct {
 	PlayerFirstName string `json:"player_first_name"`
@@ -176,4 +178,9 @@ type CardHistory struct {
 	IsCompleted     bool
 	AdminVerified   bool
 	Type            string
+}
+
+// types/types.go
+type DataUpdateDates struct {
+	TS string `db:"ts"`
 }

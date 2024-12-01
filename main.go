@@ -12,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/cron"
 )
 
 func main() {
@@ -22,16 +23,6 @@ func main() {
 
 	pb := pocketbase.New()
 
-	// Cron example, prints "Hello!" every minute
-	// c := cron.New()
-	// c.MustAdd("hello", "*/1 * * * *", func() {
-	// 	log.Println("Hello!")
-	// })
-	// c.Start()
-
-	//	c := cron.New()
-	//	c.MustAdd("dailyReport", "0 0 * * *", func() { ... })
-	//	c.Start()
 	// serves static files from the provided public dir (if exists)
 	pb.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.Static("/public", "public")
@@ -52,6 +43,19 @@ func main() {
 		lib.GetAllPlayers(e, pb)
 		lib.GetAllFixtureEvents(e, pb)
 		lib.GetAllFixtures(e, pb)
+
+		// Cron example, prints "Hello!" every minute
+		// c := cron.New()
+		// c.MustAdd("hello", "*/1 * * * *", func() {
+		// 	log.Println("Hello!")
+		// })
+		// c.Start()
+		c := cron.New()
+		c.MustAdd("daily ETL", "*/2 * * * *", func() {
+			lib.DailyDataCheck(e, pb)
+		})
+		c.Start()
+
 		return nil
 	})
 
