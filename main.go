@@ -43,18 +43,20 @@ func main() {
 		lib.GetAllPlayers(e, pb)
 		lib.GetAllFixtureEvents(e, pb)
 		lib.GetAllFixtures(e, pb)
+		// lib.DailyDataCheck(e, pb)
 
-		// Cron example, prints "Hello!" every minute
-		// c := cron.New()
-		// c.MustAdd("hello", "*/1 * * * *", func() {
-		// 	log.Println("Hello!")
-		// })
-		// c.Start()
 		c := cron.New()
-		c.MustAdd("daily ETL", "*/2 * * * *", func() {
-			lib.DailyDataCheck(e, pb)
+		c.MustAdd("Weekly Fixture Update Check", "0 10 * * 2", func() {
+			lib.CheckForFixtureUpdates(e, pb)
 		})
 		c.Start()
+
+		// Add cron job to run daily ETL
+		// c := cron.New()
+		// c.MustAdd("daily ETL", "*/2 * * * *", func() {
+		// 	lib.DailyDataCheck(e, pb)
+		// })
+		// c.Start()
 
 		return nil
 	})

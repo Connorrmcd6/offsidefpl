@@ -15,38 +15,42 @@ import (
 func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	log.Println("[DailyDataCheck] Starting daily gameweek completion check")
 
-	todayMidnight := getTodayMidnight()
+	// todayMidnight := getTodayMidnight()
 	timestamps := []types.DataUpdateDates{}
 
-	err := pb.DB().NewQuery("SELECT max(kickoff) as ts FROM fixtures GROUP BY gameweek ORDER BY gameweek ASC").All(&timestamps)
+	err := pb.DB().NewQuery("SELECT max(kickoff) as ts FROM fixtures GROUP BY date(kickoff) ORDER BY gameweek ASC").All(&timestamps)
 	if err != nil {
 		log.Printf("[DailyDataCheck] Database query failed: %v", err)
 		return fmt.Errorf("failed to process fixtures: %w", err)
 	}
 
-	for _, ts := range timestamps {
-		fixtureEndDate, err := roundUpToNextDay(ts.TS)
-		if err != nil {
-			log.Printf("[DailyDataCheck] Date parsing error: %v", err)
-			return fmt.Errorf("failed to parse date: %w", err)
-		}
+	fmt.Print(
+		"Timestamps: ", timestamps,
+	)
 
-		randomNum := rand.Intn(5) + 1
-		log.Printf("[DailyDataCheck] Random check number generated: %d", randomNum)
+	// for _, ts := range timestamps {
+	// 	fixtureEndDate, err := roundUpToNextDay(ts.TS)
+	// 	if err != nil {
+	// 		log.Printf("[DailyDataCheck] Date parsing error: %v", err)
+	// 		return fmt.Errorf("failed to parse date: %w", err)
+	// 	}
 
-		if todayMidnight == fixtureEndDate || randomNum == 3 {
-			log.Println("[DailyDataCheck] Triggering hourly checks - gameweek completed or test condition met")
-			c := cron.New()
-			c.MustAdd("Hourly ETL", "*/1 * * * *", func() {
-				hourlyDataCheck(e, pb, c)
-			})
-			c.Start()
-			return nil
-		} else {
-			log.Println("[DailyDataCheck] No gameweek completion detected")
-			return nil
-		}
-	}
+	// 	randomNum := rand.Intn(5) + 1
+	// 	log.Printf("[DailyDataCheck] Random check number generated: %d", randomNum)
+
+	// 	if todayMidnight == fixtureEndDate || randomNum == 3 {
+	// 		log.Println("[DailyDataCheck] Triggering hourly checks - gameweek completed or test condition met")
+	// 		c := cron.New()
+	// 		c.MustAdd("Hourly ETL", "*/1 * * * *", func() {
+	// 			hourlyDataCheck(e, pb, c)
+	// 		})
+	// 		c.Start()
+	// 		return nil
+	// 	} else {
+	// 		log.Println("[DailyDataCheck] No gameweek completion detected")
+	// 		return nil
+	// 	}
+	// }
 	return nil
 }
 

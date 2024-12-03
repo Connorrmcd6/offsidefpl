@@ -5,3 +5,11 @@
 
 
 the weekly pipeline needs to make sure all fpl data is updated, such as players being in the correct teams etc
+
+
+
+- Check if a fixture happened 
+    - if it has kick off hourly script to check if leagues have been updated
+        - if they have run upsert transformation
+
+- also make a pipeline that updates fixtures dates          

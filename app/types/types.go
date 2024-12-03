@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"time"
 )
 
 type FPLUser struct {
@@ -148,6 +149,33 @@ type Fixtures struct {
 	Kickoff    string `json:"kickoff_time"`
 	HomeTeamID int    `json:"team_h"`
 	AwayTeamID int    `json:"team_a"`
+}
+
+func (df DatabaseFixtures) ToFixtures() Fixtures {
+	// Parse the timestamp and convert format
+	var formattedKickoff string
+	if t, err := time.Parse("2006-01-02 15:04:05.000Z", df.Kickoff); err == nil {
+		formattedKickoff = t.Format("2006-01-02T15:04:05Z")
+	} else {
+		// Fallback to original if parsing fails
+		formattedKickoff = df.Kickoff
+	}
+
+	return Fixtures{
+		FixtureID:  df.FixtureID,
+		Gameweek:   df.Gameweek,
+		Kickoff:    formattedKickoff,
+		HomeTeamID: df.HomeTeamID,
+		AwayTeamID: df.AwayTeamID,
+	}
+}
+
+type DatabaseFixtures struct {
+	FixtureID  int    `db:"fixtureID"`
+	Gameweek   int    `db:"gameweek"`
+	Kickoff    string `db:"kickoff"`
+	HomeTeamID int    `db:"homeTeamID"`
+	AwayTeamID int    `db:"awayTeamID"`
 }
 
 type GameweekHistory struct {
