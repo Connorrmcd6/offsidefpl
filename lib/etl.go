@@ -90,7 +90,11 @@ func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	}
 
 	if response.Leagues == "Updated" {
-		log.Println("[HourlyDataCheck] League data is updated - pulling latest data")
+		err := checkForEventsUpdate(pb)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update events: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update events: %v", err))
+		}
 		return nil
 	}
 
@@ -300,102 +304,121 @@ func CheckForPlayerUpdates(e *core.ServeEvent, pb *pocketbase.PocketBase) error 
 	return nil
 }
 
-// func checkForEventsUpdate(e *core.ServeEvent, pb *pocketbase.PocketBase) error{
-// 	log.Println("[EventUpdate] Starting event update check")
+func checkForEventsUpdate(pb *pocketbase.PocketBase) error {
+	log.Println("[EventUpdate] Starting event update check")
 
-// 	// Fetch existing players from DB
-// 	var existingEvents []types.DatabaseStats
-// 	err := pb.Dao().DB().
-// 		NewQuery("SELECT * FROM events").
-// 		All(&existingEvents)
+	// Fetch existing players from DB
+	var existingEvents []types.DatabaseFixtureStats
+	err := pb.Dao().DB().
+		NewQuery("SELECT * FROM events").
+		All(&existingEvents)
 
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return fmt.Errorf("failed to get existing players: %w", err)
-// 	}
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf("failed to get existing eventa: %w", err)
+	}
 
-// 	// Create map of existing players for easy lookup
-// 	eventsMap := make(map[int]types.DatabaseStats)
-// 	for _, e := range existingEvents {
-// 		eventsMap[e.EventID] = e
-// 	}
+	// Create map of existing players for easy lookup
+	eventsMap := make(map[string]types.DatabaseFixtureStats)
+	for _, e := range existingEvents {
+		eventsMap[e.EventHash] = e
+	}
 
-// 	fmt.Print(eventsMap)
-// 	// // Fetch latest players from API
-// 	// endpoint := "https://fantasy.premierleague.com/api/bootstrap-static/"
-// 	// resp, err := http.Get(endpoint)
-// 	// if err != nil {
-// 	// 	fmt.Println(err)
-// 	// 	return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch response: %v", err))
-// 	// }
-// 	// defer resp.Body.Close()
+	// Fetch latest players from API
+	endpoint := "https://fantasy.premierleague.com/api/fixtures/"
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch events: %v", err))
+	}
+	defer resp.Body.Close()
 
-// 	// body, err := io.ReadAll(resp.Body)
-// 	// if err != nil {
-// 	// 	fmt.Println(err)
-// 	// 	return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
-// 	// }
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
+	}
 
-// 	// var apiResponseFull types.FPLResponse
-// 	// if err := json.Unmarshal(body, &apiResponseFull); err != nil {
-// 	// 	fmt.Println(err)
-// 	// 	return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse response data: %v", err))
-// 	// }
-// 	// apiEvents := apiResponseFull.Elements
+	var apiEvents []types.FixtureStats
+	if err := json.Unmarshal(body, &apiEvents); err != nil {
+		fmt.Print(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse team data: %v", err))
+	}
 
-// 	// err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
-// 	// 	collection, err := txDao.FindCollectionByNameOrId("events")
-// 	// 	if err != nil {
-// 	// 		fmt.Println(err)
-// 	// 		return fmt.Errorf("error finding collection: %w", err)
-// 	// 	}
+	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		collection, err := txDao.FindCollectionByNameOrId("events")
+		if err != nil {
+			fmt.Println(err)
+			return fmt.Errorf("error finding collection: %w", err)
+		}
 
-// 	// 	for _, apiEvent := range apiEvents {
-// 	// 		existingPlayer, exists := eventsMap[apiPlayer.ID]
+		for _, apiEvent := range apiEvents {
+			if !apiEvent.Finished {
+				continue
+			}
 
-// 	// 		if !exists {
-// 	// 			// New player - insert
-// 	// 			record := models.NewRecord(collection)
-// 	// 			record.Set("playerID", apiPlayer.ID)
-// 	// 			record.Set("playerTeamID", apiPlayer.Team)
-// 	// 			record.Set("playerName", apiPlayer.WebName)
+			for _, stat := range apiEvent.Stats {
 
-// 	// 			if err := txDao.SaveRecord(record); err != nil {
-// 	// 				fmt.Println(err)
-// 	// 				return fmt.Errorf("error saving new player: %w", err)
-// 	// 			}
-// 	// 			log.Printf("[PlayerUpdate] Added new player ID: %d", apiPlayer.ID)
-// 	// 			continue
-// 	// 		}
+				// Process home team stats
+				for _, home := range stat.Home {
+					apiEventHash := CreateEventHash(apiEvent.FixtureID, apiEvent.Gameweek, string(stat.Identifier))
+					_, exists := eventsMap[apiEventHash]
 
-// 	// 		// Check if player needs updating
-// 	// 		if existingPlayer.ToAPIPlayers() != apiPlayer {
-// 	// 			record, err := txDao.FindFirstRecordByData("players", "playerID", existingPlayer.PlayerID)
-// 	// 			if err != nil {
-// 	// 				fmt.Println(err)
-// 	// 				return fmt.Errorf("error finding existing player: %w", err)
-// 	// 			}
+					if !exists {
+						// New player - insert
+						record := models.NewRecord(collection)
+						record.Set("eventHash", apiEventHash)
+						record.Set("fixtureID", apiEvent.FixtureID)
+						record.Set("gameweek", apiEvent.Gameweek)
+						record.Set("playerID", home.Element)
+						record.Set("eventType", string(stat.Identifier))
+						record.Set("eventValue", home.Value)
 
-// 	// 			record.Set("playerTeamID", apiPlayer.Team)
-// 	// 			record.Set("playerName", apiPlayer.WebName)
+						if err := txDao.SaveRecord(record); err != nil {
+							fmt.Println(err)
+							return fmt.Errorf("error saving new event: %w", err)
+						}
+						log.Printf("[EventUpdate] Added new event ID: %s", apiEventHash)
+						continue
 
-// 	// 			if err := txDao.SaveRecord(record); err != nil {
-// 	// 				fmt.Println(err)
-// 	// 				return fmt.Errorf("error updating player: %w", err)
-// 	// 			}
-// 	// 			log.Printf("[PlayerUpdate] Updated player ID: %d", apiPlayer.ID)
-// 	// 		}
-// 	// 	}
-// 	// 	return nil
-// 	// })
+					}
+				}
 
-// 	// if err != nil {
-// 	// 	return fmt.Errorf("transaction failed: %w", err)
-// 	// }
+				// Process away team stats
+				for _, away := range stat.Away {
+					apiEventHash := CreateEventHash(apiEvent.FixtureID, apiEvent.Gameweek, string(stat.Identifier))
+					_, exists := eventsMap[apiEventHash]
 
-// 	log.Println("[PlayerUpdate] Player update check completed")
-// 	return nil
-// }
+					if !exists {
+						// New player - insert
+						record := models.NewRecord(collection)
+						record.Set("eventHash", apiEventHash)
+						record.Set("fixtureID", apiEvent.FixtureID)
+						record.Set("gameweek", apiEvent.Gameweek)
+						record.Set("playerID", away.Element)
+						record.Set("eventType", string(stat.Identifier))
+						record.Set("eventValue", away.Value)
+
+						if err := txDao.SaveRecord(record); err != nil {
+							fmt.Println(err)
+							return fmt.Errorf("error saving new event: %w", err)
+						}
+						log.Printf("[EventUpdate] Added new event ID: %d", apiEventHash)
+						continue
+
+					}
+				}
+			}
+
+		}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	log.Println("[EventUpdate] Player update check completed")
+	return nil
+}
 
 // func checkForResultsUpdate(e *core.ServeEvent, pb *pocketbase.PocketBase) error{}
 

@@ -94,6 +94,15 @@ type FixtureStats struct {
 	Stats     []StatCategory `json:"stats"` // Fix: directly use []StatCategory
 }
 
+type DatabaseFixtureStats struct {
+	EventHash  string `db:"eventHash"`
+	FixtureID  int    `db:"fixtureID"`
+	Gameweek   int    `db:"gameweek"`
+	PlayerID   int    `db:"playerID"`
+	EventType  string `db:"eventType"`
+	EventValue int    `db:"eventValue"`
+}
+
 // StatValue represents an individual player statistic
 type StatValue struct {
 	Value   int `json:"value"`
