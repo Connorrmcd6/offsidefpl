@@ -10,6 +10,7 @@ import (
 
 	"github.com/cmcd97/bytesize/app/types"
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/daos"
@@ -90,10 +91,16 @@ func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	}
 
 	if response.Leagues == "Updated" {
+		gameweek := response.Status[0].Event
 		err := checkForEventsUpdate(pb)
 		if err != nil {
-			log.Printf("[HourlyDataCheck] Failed to update events: %v", err)
+			log.Printf("[HourlyDataCheck] Failed to update results: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update events: %v", err))
+		}
+		err = updateGameweekResults(pb, gameweek)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update results: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update results: %v", err))
 		}
 		return nil
 	}
@@ -401,7 +408,7 @@ func checkForEventsUpdate(pb *pocketbase.PocketBase) error {
 							fmt.Println(err)
 							return fmt.Errorf("error saving new event: %w", err)
 						}
-						log.Printf("[EventUpdate] Added new event ID: %d", apiEventHash)
+						log.Printf("[EventUpdate] Added new event ID: %s", apiEventHash)
 						continue
 
 					}
@@ -420,7 +427,225 @@ func checkForEventsUpdate(pb *pocketbase.PocketBase) error {
 	return nil
 }
 
-// func checkForResultsUpdate(e *core.ServeEvent, pb *pocketbase.PocketBase) error{}
+func updateGameweekResults(pb *pocketbase.PocketBase, gameweek int) error {
+	log.Println("[ResultsUpdate] Starting results update check")
+	// fetch existing results from DB
+	var existingResults []types.DatabaseResults
+	err := pb.Dao().DB().
+		NewQuery(`
+		SELECT
+		gameweek,
+		userID,
+		teamID,
+		points,
+		transfers,
+		hits,
+		benchPoints,
+		activeChip,
+		pos_1,
+		pos_2,
+		pos_3,
+		pos_4,
+		pos_5,
+		pos_6,
+		pos_7,
+		pos_8,
+		pos_9,
+		pos_10,
+		pos_11,
+		pos_12,
+		pos_13,
+		pos_14,
+		pos_15
+		FROM results`).
+		All(&existingResults)
+
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf("failed to get stored results: %w", err)
+	}
+
+	// Create map of existing results for easy lookup
+	resultsMap := make(map[string]types.DatabaseResults)
+
+	for _, r := range existingResults {
+		mapKey := fmt.Sprintf("%d_%s", r.Gameweek, r.UserID)
+		resultsMap[mapKey] = r
+	}
+
+	// Fetch existing users from DB
+	var users []types.DatabaseUsers
+	err = pb.Dao().DB().
+		NewQuery("SELECT DISTINCT id, teamID FROM users").
+		All(&users)
+
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf("failed to get registered users: %w", err)
+	}
+
+	var latestResults []types.DatabaseResults
+	for _, user := range users {
+		result, err := getTeamGameweekResult(user.TeamID, gameweek, user.UserID)
+		if err != nil {
+			fmt.Println(err)
+			return fmt.Errorf("failed to get gameweek result: %w", err)
+		}
+		// Append result to an array of latest results
+		latestResults = append(latestResults, result)
+	}
+
+	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		collection, err := txDao.FindCollectionByNameOrId("results")
+		if err != nil {
+			fmt.Println(err)
+			return fmt.Errorf("error finding collection: %w", err)
+		}
+
+		for _, latestResult := range latestResults {
+			mapKey := fmt.Sprintf("%d_%s", latestResult.Gameweek, latestResult.UserID)
+			existingResult, exists := resultsMap[mapKey]
+
+			if !exists {
+				// New result - insert
+				record := models.NewRecord(collection)
+				record.Set("gameweek", latestResult.Gameweek)
+				record.Set("userID", latestResult.UserID)
+				record.Set("teamID", latestResult.TeamID)
+				record.Set("points", latestResult.Points)
+				record.Set("transfers", latestResult.Transfers)
+				record.Set("hits", latestResult.Hits)
+				record.Set("benchPoints", latestResult.BenchPoints)
+				record.Set("activeChip", latestResult.ActiveChip)
+				record.Set("pos_1", latestResult.Pos1)
+				record.Set("pos_2", latestResult.Pos2)
+				record.Set("pos_3", latestResult.Pos3)
+				record.Set("pos_4", latestResult.Pos4)
+				record.Set("pos_5", latestResult.Pos5)
+				record.Set("pos_6", latestResult.Pos6)
+				record.Set("pos_7", latestResult.Pos7)
+				record.Set("pos_8", latestResult.Pos8)
+				record.Set("pos_9", latestResult.Pos9)
+				record.Set("pos_10", latestResult.Pos10)
+				record.Set("pos_11", latestResult.Pos11)
+				record.Set("pos_12", latestResult.Pos12)
+				record.Set("pos_13", latestResult.Pos13)
+				record.Set("pos_14", latestResult.Pos14)
+				record.Set("pos_15", latestResult.Pos15)
+
+				if err := txDao.SaveRecord(record); err != nil {
+					fmt.Println(err)
+					return fmt.Errorf("error saving new result: %w", err)
+				}
+				log.Printf("[ResultsUpdate] Added new result for user %s gameweek %d",
+					latestResult.UserID, latestResult.Gameweek)
+				continue
+			}
+
+			// Check if result needs updating by comparing structs
+			if existingResult != latestResult {
+				record, err := txDao.FindFirstRecordByFilter("results", "gameweek = '{:gameweek}' && userID = {:userID}", dbx.Params{"gameweek": gameweek, "userID": latestResult.UserID})
+				if err != nil {
+					fmt.Println(err)
+					return fmt.Errorf("error finding existing result: %w", err)
+				}
+
+				record.Set("gameweek", latestResult.Gameweek)
+				record.Set("userID", latestResult.UserID)
+				record.Set("teamID", latestResult.TeamID)
+				record.Set("points", latestResult.Points)
+				record.Set("transfers", latestResult.Transfers)
+				record.Set("hits", latestResult.Hits)
+				record.Set("benchPoints", latestResult.BenchPoints)
+				record.Set("activeChip", latestResult.ActiveChip)
+				record.Set("pos_1", latestResult.Pos1)
+				record.Set("pos_2", latestResult.Pos2)
+				record.Set("pos_3", latestResult.Pos3)
+				record.Set("pos_4", latestResult.Pos4)
+				record.Set("pos_5", latestResult.Pos5)
+				record.Set("pos_6", latestResult.Pos6)
+				record.Set("pos_7", latestResult.Pos7)
+				record.Set("pos_8", latestResult.Pos8)
+				record.Set("pos_9", latestResult.Pos9)
+				record.Set("pos_10", latestResult.Pos10)
+				record.Set("pos_11", latestResult.Pos11)
+				record.Set("pos_12", latestResult.Pos12)
+				record.Set("pos_13", latestResult.Pos13)
+				record.Set("pos_14", latestResult.Pos14)
+				record.Set("pos_15", latestResult.Pos15)
+
+				if err := txDao.SaveRecord(record); err != nil {
+					fmt.Println(err)
+					return fmt.Errorf("error updating result: %w", err)
+				}
+				log.Printf("[ResultsUpdate] Updated result for user %s gameweek %d",
+					latestResult.UserID, latestResult.Gameweek)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	log.Println("[ResultsUpdate] Results update completed")
+	return nil
+}
+
+func getTeamGameweekResult(teamID, gameweek int, userID string) (types.DatabaseResults, error) {
+
+	baseEndpoint := "https://fantasy.premierleague.com/api/entry/%d/event/%d/picks/"
+
+	// Fetch latest results from API
+	endpoint := fmt.Sprintf(baseEndpoint, teamID, gameweek)
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return types.DatabaseResults{}, echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch events: %v", err))
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return types.DatabaseResults{}, echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
+	}
+
+	var result types.GameweekHistory
+	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Print(err)
+		return types.DatabaseResults{}, echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse team data: %v", err))
+	}
+
+	return flattenAPIResults(result, teamID, userID), nil
+}
+
+func flattenAPIResults(results types.GameweekHistory, teamID int, userID string) types.DatabaseResults {
+	return types.DatabaseResults{
+		Gameweek:    results.GameweekHistrory.Gameweek,
+		UserID:      userID,
+		TeamID:      teamID,
+		Points:      results.GameweekHistrory.Points,
+		Transfers:   results.GameweekHistrory.Transfers,
+		Hits:        results.GameweekHistrory.TransferCost,
+		BenchPoints: results.GameweekHistrory.BenchPoints,
+		ActiveChip:  results.ActiveChip,
+		Pos1:        results.Players[0].PlayerID,
+		Pos2:        results.Players[1].PlayerID,
+		Pos3:        results.Players[2].PlayerID,
+		Pos4:        results.Players[3].PlayerID,
+		Pos5:        results.Players[4].PlayerID,
+		Pos6:        results.Players[5].PlayerID,
+		Pos7:        results.Players[6].PlayerID,
+		Pos8:        results.Players[7].PlayerID,
+		Pos9:        results.Players[8].PlayerID,
+		Pos10:       results.Players[9].PlayerID,
+		Pos11:       results.Players[10].PlayerID,
+		Pos12:       results.Players[11].PlayerID,
+		Pos13:       results.Players[12].PlayerID,
+		Pos14:       results.Players[13].PlayerID,
+		Pos15:       results.Players[14].PlayerID,
+	}
+}
 
 // func updateCards(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 

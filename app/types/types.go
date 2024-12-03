@@ -203,12 +203,12 @@ type DatabaseFixtures struct {
 }
 
 type GameweekHistory struct {
-	GameweekHistrory GameweekHistrory    `json:"entry_history"`
+	GameweekHistrory GameweekResults     `json:"entry_history"`
 	ActiveChip       string              `json:"active_chip"`
 	Players          []GameweekSelection `json:"picks"`
 }
 
-type GameweekHistrory struct {
+type GameweekResults struct {
 	Gameweek     int `json:"event"`
 	Points       int `json:"points"`
 	Transfers    int `json:"event_transfers"`
@@ -249,4 +249,35 @@ type FixtureStatus struct {
 type FixtureUpdateStatus struct {
 	Status  []FixtureStatus `json:"status"`
 	Leagues string          `json:"leagues"`
+}
+
+type DatabaseUsers struct {
+	UserID string `db:"id"`
+	TeamID int    `db:"teamID"`
+}
+
+type DatabaseResults struct {
+	Gameweek    int    `db:"gameweek"`
+	UserID      string `db:"userID"`
+	TeamID      int    `db:"teamID"`
+	Points      int    `db:"points"`
+	Transfers   int    `db:"transfers"`
+	Hits        int    `db:"hits"`
+	BenchPoints int    `db:"benchPoints"`
+	ActiveChip  string `db:"activeChip"`
+	Pos1        int    `db:"pos_1"`
+	Pos2        int    `db:"pos_2"`
+	Pos3        int    `db:"pos_3"`
+	Pos4        int    `db:"pos_4"`
+	Pos5        int    `db:"pos_5"`
+	Pos6        int    `db:"pos_6"`
+	Pos7        int    `db:"pos_7"`
+	Pos8        int    `db:"pos_8"`
+	Pos9        int    `db:"pos_9"`
+	Pos10       int    `db:"pos_10"`
+	Pos11       int    `db:"pos_11"`
+	Pos12       int    `db:"pos_12"`
+	Pos13       int    `db:"pos_13"`
+	Pos14       int    `db:"pos_14"`
+	Pos15       int    `db:"pos_15"`
 }
