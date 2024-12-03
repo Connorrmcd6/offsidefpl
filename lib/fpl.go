@@ -14,7 +14,6 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 )
 
@@ -252,9 +251,12 @@ func GetAllFixtureEvents(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 		}
 
 		for _, stat := range fixture.Stats {
+
 			// Process home team stats
 			for _, home := range stat.Home {
+				eventHash := CreateEventHash(fixture.FixtureID, fixture.Gameweek, string(stat.Identifier))
 				record := models.NewRecord(collection)
+				record.Set("eventHash", eventHash)
 				record.Set("fixtureID", fixture.FixtureID)
 				record.Set("gameweek", fixture.Gameweek)
 				record.Set("playerID", home.Element)
@@ -268,7 +270,9 @@ func GetAllFixtureEvents(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 
 			// Process away team stats
 			for _, away := range stat.Away {
+				eventHash := CreateEventHash(fixture.FixtureID, fixture.Gameweek, string(stat.Identifier))
 				record := models.NewRecord(collection)
+				record.Set("eventHash", eventHash)
 				record.Set("fixtureID", fixture.FixtureID)
 				record.Set("gameweek", fixture.Gameweek)
 				record.Set("playerID", away.Element)
@@ -283,7 +287,6 @@ func GetAllFixtureEvents(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	}
 
 	return nil
-
 }
 
 func GetAllFixtures(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
@@ -344,96 +347,5 @@ func GetAllFixtures(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 		}
 	}
 
-	return nil
-}
-
-func CheckForFixtureUpdates(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
-	log.Println("[FixtureUpdate] Starting fixture update check")
-
-	// Fetch existing fixtures from DB
-	var existingFixtures []types.DatabaseFixtures
-	err := pb.Dao().DB().
-		NewQuery("SELECT * FROM fixtures").
-		All(&existingFixtures)
-
-	if err != nil {
-		return fmt.Errorf("failed to get existing fixtures: %w", err)
-	}
-
-	// Create map of existing fixtures for easy lookup
-	fixturesMap := make(map[int]types.DatabaseFixtures)
-	for _, f := range existingFixtures {
-		fixturesMap[f.FixtureID] = f
-	}
-
-	// Fetch latest fixtures from API
-	endpoint := "https://fantasy.premierleague.com/api/fixtures/"
-	resp, err := http.Get(endpoint)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch fixtures: %v", err))
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
-	}
-
-	var apiFixtures []types.Fixtures
-	if err := json.Unmarshal(body, &apiFixtures); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse fixture data: %v", err))
-	}
-
-	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
-		collection, err := txDao.FindCollectionByNameOrId("fixtures")
-		if err != nil {
-			return fmt.Errorf("error finding collection: %w", err)
-		}
-
-		for _, apiFixture := range apiFixtures {
-			existingFixture, exists := fixturesMap[apiFixture.FixtureID]
-
-			if !exists {
-				// New fixture - insert
-				record := models.NewRecord(collection)
-				record.Set("fixtureID", apiFixture.FixtureID)
-				record.Set("gameweek", apiFixture.Gameweek)
-				record.Set("kickoff", apiFixture.Kickoff)
-				record.Set("homeTeamID", apiFixture.HomeTeamID)
-				record.Set("awayTeamID", apiFixture.AwayTeamID)
-
-				if err := txDao.SaveRecord(record); err != nil {
-					return fmt.Errorf("error saving new fixture: %w", err)
-				}
-				log.Printf("[FixtureUpdate] Added new fixture ID: %d", apiFixture.FixtureID)
-				continue
-			}
-
-			// Check if fixture needs updating
-			if existingFixture.ToFixtures() != apiFixture {
-				record, err := txDao.FindFirstRecordByData("fixtures", "fixtureID", existingFixture.FixtureID)
-				if err != nil {
-					return fmt.Errorf("error finding existing fixture: %w", err)
-				}
-
-				record.Set("gameweek", apiFixture.Gameweek)
-				record.Set("kickoff", apiFixture.Kickoff)
-				record.Set("homeTeamID", apiFixture.HomeTeamID)
-				record.Set("awayTeamID", apiFixture.AwayTeamID)
-
-				if err := txDao.SaveRecord(record); err != nil {
-					return fmt.Errorf("error updating fixture: %w", err)
-				}
-				log.Printf("[FixtureUpdate] Updated fixture ID: %d", apiFixture.FixtureID)
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("transaction failed: %w", err)
-	}
-
-	log.Println("[FixtureUpdate] Fixture update check completed")
 	return nil
 }

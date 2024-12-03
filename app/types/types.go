@@ -66,6 +66,21 @@ type Player struct {
 	WebName string `json:"web_name"`
 }
 
+type DatabasePlayer struct {
+	PlayerID int    `db:"playerID"`
+	Team     int    `db:"playerTeamID"`
+	Name     string `db:"playerName"`
+}
+
+func (df DatabasePlayer) ToAPIPlayers() Player {
+
+	return Player{
+		ID:      df.PlayerID,
+		Team:    df.Team,
+		WebName: df.Name,
+	}
+}
+
 // FPLResponse represents the full API response
 type FPLResponse struct {
 	Events   []Event  `json:"events"`
@@ -151,7 +166,7 @@ type Fixtures struct {
 	AwayTeamID int    `json:"team_a"`
 }
 
-func (df DatabaseFixtures) ToFixtures() Fixtures {
+func (df DatabaseFixtures) ToAPIFixtures() Fixtures {
 	// Parse the timestamp and convert format
 	var formattedKickoff string
 	if t, err := time.Parse("2006-01-02 15:04:05.000Z", df.Kickoff); err == nil {
@@ -211,4 +226,18 @@ type CardHistory struct {
 // types/types.go
 type DataUpdateDates struct {
 	TS string `db:"ts"`
+}
+
+// Status represents individual fixture status entries
+type FixtureStatus struct {
+	BonusAdded bool   `json:"bonus_added"`
+	Date       string `json:"date"`
+	Event      int    `json:"event"`
+	Points     string `json:"points"`
+}
+
+// FixtureUpdateStatus represents the full API response structure
+type FixtureUpdateStatus struct {
+	Status  []FixtureStatus `json:"status"`
+	Leagues string          `json:"leagues"`
 }
