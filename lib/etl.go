@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/cmcd97/bytesize/app/types"
@@ -102,8 +103,11 @@ func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 			log.Printf("[HourlyDataCheck] Failed to update results: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update results: %v", err))
 		}
-
-		// update cards
+		err = updateCards(pb)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update cards: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update cards: %v", err))
+		}
 		// updated results aggregated
 		return nil
 	}
@@ -650,162 +654,347 @@ func flattenAPIResults(results types.GameweekHistory, teamID int, userID string)
 	}
 }
 
-func UpdateCards(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+func updateCards(pb *pocketbase.PocketBase) error {
 	log.Println("[CardsUpdate] Starting card update")
 
-	// Fetch existing players from DB
-	var existingCards []types.DatabaseCard
-	err := pb.Dao().DB().
-		NewQuery("SELECT * FROM cards").
-		All(&existingCards)
-
+	// Fetch all required data first
+	cardsMap, err := fetchExistingCards(pb)
 	if err != nil {
-		fmt.Println(err)
-		return fmt.Errorf("failed to get existing cards: %w", err)
+		log.Printf("[CardsUpdate] Error fetching existing cards: %v", err)
+		return err
 	}
+	log.Printf("[CardsUpdate] Fetched %d existing card records", len(cardsMap))
 
-	// Create map of existing players for easy lookup
-	cardsMap := make(map[string][]types.DatabaseCard)
-	for _, c := range existingCards {
-		cardsMap[c.UserID] = append(cardsMap[c.UserID], c)
-	}
-
-	// log.Print(cardsMap)
-
-	// Fetch user leagues from DB
-	var userLeagues []types.DatabaseLeague
-	err = pb.Dao().DB().
-		NewQuery("SELECT leagueID, userID FROM leagues where isLinked = TRUE").
-		All(&userLeagues)
-
+	leagueMap, err := fetchUserLeagues(pb)
 	if err != nil {
-		fmt.Println(err)
-		return fmt.Errorf("failed to get user leagues: %w", err)
+		log.Printf("[CardsUpdate] Error fetching user leagues: %v", err)
+		return err
 	}
-	// Create map of user leagues for easy lookup
-	leagueMap := make(map[string][]int)
-	for _, l := range userLeagues {
-		leagueMap[l.UserID] = append(leagueMap[l.UserID], l.LeagueID)
-	}
-	// log.Print(leagueMap)
+	log.Printf("[CardsUpdate] Fetched league data for %d users", len(leagueMap))
 
-	// Fetch existing players from DB
-	var currentResults []types.DatabaseResults
-	err = pb.Dao().DB().
-		NewQuery("SELECT * FROM results").
-		All(&currentResults)
-
+	resultsMap, err := fetchResults(pb)
 	if err != nil {
-		fmt.Println(err)
-		return fmt.Errorf("failed to get existing results %w", err)
+		log.Printf("[CardsUpdate] Error fetching results: %v", err)
+		return err
 	}
+	log.Printf("[CardsUpdate] Fetched results for %d users", len(resultsMap))
 
-	// Create map of existing players for easy lookup
-	resultsMap := make(map[string][]types.DatabaseResults)
-	for _, c := range currentResults {
-		resultsMap[c.UserID] = append(resultsMap[c.UserID], c)
-	}
-
-	// Fetch existing players from DB
-	var currentEvents []types.DatabaseEvent
-	err = pb.Dao().DB().
-		NewQuery("SELECT * FROM events").
-		All(&currentEvents)
-
+	eventsMap, err := fetchEvents(pb)
 	if err != nil {
-		fmt.Println(err)
-		return fmt.Errorf("failed to get existing events%w", err)
+		log.Printf("[CardsUpdate] Error fetching events: %v", err)
+		return err
+	}
+	log.Printf("[CardsUpdate] Fetched events for %d players", len(eventsMap))
+
+	// Setup concurrent processing
+	workerCount := 5 // Adjust based on your needs
+	userIDs := make([]string, 0, len(resultsMap))
+	for userID := range resultsMap {
+		userIDs = append(userIDs, userID)
+	}
+	log.Printf("[CardsUpdate] Processing %d users with %d workers", len(userIDs), workerCount)
+
+	// Create channels
+	jobs := make(chan string, len(userIDs))
+	results := make(chan error, len(userIDs))
+
+	// Start worker pool
+	var wg sync.WaitGroup
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		log.Printf("[CardsUpdate] Starting worker %d", w+1)
+		go worker(pb, jobs, results, &wg, cardsMap, leagueMap, resultsMap, eventsMap)
 	}
 
-	// Create map of existing players for easy lookup
-	eventsMap := make(map[int][]types.DatabaseEvent)
-	for _, c := range currentEvents {
-		eventsMap[c.PlayerID] = append(eventsMap[c.PlayerID], c)
+	// Send jobs
+	log.Println("[CardsUpdate] Sending jobs to workers")
+	for _, userID := range userIDs {
+		jobs <- userID
+	}
+	close(jobs)
+	log.Println("[CardsUpdate] All jobs sent to workers")
+
+	// Wait for all workers to complete
+	go func() {
+		wg.Wait()
+		log.Println("[CardsUpdate] All workers completed")
+		close(results)
+	}()
+
+	// Collect results
+	errorCount := 0
+	for err := range results {
+		if err != nil {
+			errorCount++
+			log.Printf("[CardsUpdate] Worker error: %v", err)
+		}
 	}
 
-	// log.Print(eventsMap)
-	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+	if errorCount > 0 {
+		return fmt.Errorf("completed with %d errors", errorCount)
+	}
+
+	log.Printf("[CardsUpdate] Card update completed successfully for %d users", len(userIDs))
+	return nil
+}
+
+func worker(
+	pb *pocketbase.PocketBase,
+	jobs <-chan string,
+	results chan<- error,
+	wg *sync.WaitGroup,
+	cardsMap map[string][]types.DatabaseCard,
+	leagueMap map[string][]int,
+	resultsMap map[string][]types.DatabaseResults,
+	eventsMap map[int][]types.DatabaseEvent,
+) {
+	defer wg.Done()
+
+	for userID := range jobs {
+		err := processUser(pb, userID, cardsMap, leagueMap, resultsMap, eventsMap)
+		results <- err
+	}
+}
+
+func processUser(
+	pb *pocketbase.PocketBase,
+	userID string,
+	cardsMap map[string][]types.DatabaseCard,
+	leagueMap map[string][]int,
+	resultsMap map[string][]types.DatabaseResults,
+	eventsMap map[int][]types.DatabaseEvent,
+) error {
+	userLeagues := leagueMap[userID]
+	if len(userLeagues) == 0 {
+		return nil
+	}
+
+	return pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		collection, err := txDao.FindCollectionByNameOrId("cards")
 		if err != nil {
 			return fmt.Errorf("error finding collection: %w", err)
 		}
 
-		// Process each user's results
-		for userID, results := range resultsMap {
-			userLeagues := leagueMap[userID]
-
-			// Skip if user has no linked leagues
-			if len(userLeagues) == 0 {
-				continue
+		results := resultsMap[userID]
+		for _, result := range results {
+			if err := processResult(txDao, collection, result, userID, userLeagues, cardsMap, eventsMap); err != nil {
+				return err
 			}
+		}
+		return nil
+	})
+}
 
-			// Process each result
-			for _, result := range results {
-				// Get all player IDs from result positions
-				playerIDs := []int{
-					result.Pos1, result.Pos2, result.Pos3, result.Pos4, result.Pos5,
-					result.Pos6, result.Pos7, result.Pos8, result.Pos9, result.Pos10, result.Pos11,
-				}
+func processResult(
+	txDao *daos.Dao,
+	collection *models.Collection,
+	result types.DatabaseResults,
+	userID string,
+	userLeagues []int,
+	cardsMap map[string][]types.DatabaseCard,
+	eventsMap map[int][]types.DatabaseEvent,
+) error {
+	playerIDs := []int{
+		result.Pos1, result.Pos2, result.Pos3, result.Pos4, result.Pos5,
+		result.Pos6, result.Pos7, result.Pos8, result.Pos9, result.Pos10, result.Pos11,
+		result.Pos12, result.Pos13, result.Pos14, result.Pos15,
+	}
 
-				// Check each player for card events
-				for _, playerID := range playerIDs {
-					playerEvents := eventsMap[playerID]
-					for _, event := range playerEvents {
-						if event.Gameweek == result.Gameweek {
-							// Create cards for each event value (number of cards)
-							for cardIndex := 0; cardIndex < event.EventValue; cardIndex++ {
-								// Process each league for this card event
-								for _, leagueID := range userLeagues {
-									// Create unique hash including card index
-									cardHash := fmt.Sprintf("%s_%d_%d_%s_%d", userID, leagueID, result.Gameweek, event.EventType, cardIndex)
+	playerPositions := make(map[int]int)
+	for pos, playerID := range playerIDs {
+		playerPositions[playerID] = pos + 1
+	}
 
-									// Check if card already exists
-									existingCards := cardsMap[userID]
-									cardExists := false
-									for _, existing := range existingCards {
-										if existing.CardHash == cardHash {
-											cardExists = true
-											break
-										}
-									}
+	for _, playerID := range playerIDs {
+		position := playerPositions[playerID]
+		if position <= 11 {
+			if err := processPlayerEvents(txDao, collection, playerID, position, result, userID, userLeagues, cardsMap, eventsMap); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
-									if !cardExists {
-										// Insert new card record
-										record := models.NewRecord(collection)
-										record.Set("teamID", result.TeamID)
-										record.Set("userID", userID)
-										record.Set("nominatorTeamID", nil)
-										record.Set("nominatorUserID", "")
-										record.Set("gameweek", result.Gameweek)
-										record.Set("isCompleted", false)
-										record.Set("adminVerified", false)
-										record.Set("type", event.EventType)
-										record.Set("leagueID", leagueID)
-										record.Set("cardHash", cardHash)
-										if err := txDao.SaveRecord(record); err != nil {
-											return fmt.Errorf("error saving new card: %w", err)
-										}
-										log.Printf("[CardsUpdate] Added new card %d of %d type %s for user %s in league %d gameweek %d",
-											cardIndex+1, event.EventValue, event.EventType, userID, leagueID, result.Gameweek)
-									}
-								}
-							}
+func fetchExistingCards(pb *pocketbase.PocketBase) (map[string][]types.DatabaseCard, error) {
+	cardsMap := make(map[string][]types.DatabaseCard)
+
+	records, err := pb.Dao().FindRecordsByExpr("cards")
+	if err != nil {
+		return nil, fmt.Errorf("error fetching cards: %w", err)
+	}
+
+	for _, record := range records {
+		card := types.DatabaseCard{
+			TeamID:          record.GetInt("teamID"),
+			UserID:          record.GetString("userID"),
+			NominatorTeamID: record.GetInt("nominatorTeamID"),
+			NominatorUserID: record.GetString("nominatorUserID"),
+			Gameweek:        record.GetInt("gameweek"),
+			IsCompleted:     record.GetBool("isCompleted"),
+			AdminVerified:   record.GetBool("adminVerified"),
+			Type:            record.GetString("type"),
+			LeagueID:        record.GetInt("leagueID"),
+			CardHash:        record.GetString("cardHash"),
+		}
+
+		userID := card.UserID
+		cardsMap[userID] = append(cardsMap[userID], card)
+	}
+
+	return cardsMap, nil
+}
+
+func fetchUserLeagues(pb *pocketbase.PocketBase) (map[string][]int, error) {
+	leagueMap := make(map[string][]int)
+
+	records, err := pb.Dao().FindRecordsByExpr("leagues",
+		dbx.NewExp("isLinked = {:isLinked}", dbx.Params{"isLinked": true}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching user leagues: %w", err)
+	}
+
+	for _, record := range records {
+		userID := record.GetString("userID")
+		leagueID := record.GetInt("leagueID")
+
+		// Append league to user's leagues
+		leagueMap[userID] = append(leagueMap[userID], leagueID)
+	}
+
+	return leagueMap, nil
+}
+
+func fetchResults(pb *pocketbase.PocketBase) (map[string][]types.DatabaseResults, error) {
+	resultsMap := make(map[string][]types.DatabaseResults)
+
+	records, err := pb.Dao().FindRecordsByExpr("results")
+	if err != nil {
+		return nil, fmt.Errorf("error fetching results: %w", err)
+	}
+
+	for _, record := range records {
+		result := types.DatabaseResults{
+			TeamID:   record.GetInt("teamID"),
+			UserID:   record.GetString("userID"),
+			Gameweek: record.GetInt("gameweek"),
+			Pos1:     record.GetInt("pos_1"),
+			Pos2:     record.GetInt("pos_2"),
+			Pos3:     record.GetInt("pos_3"),
+			Pos4:     record.GetInt("pos_4"),
+			Pos5:     record.GetInt("pos_5"),
+			Pos6:     record.GetInt("pos_6"),
+			Pos7:     record.GetInt("pos_7"),
+			Pos8:     record.GetInt("pos_8"),
+			Pos9:     record.GetInt("pos_9"),
+			Pos10:    record.GetInt("pos_10"),
+			Pos11:    record.GetInt("pos_11"),
+			Pos12:    record.GetInt("pos_12"),
+			Pos13:    record.GetInt("pos_13"),
+			Pos14:    record.GetInt("pos_14"),
+			Pos15:    record.GetInt("pos_15"),
+		}
+		resultsMap[result.UserID] = append(resultsMap[result.UserID], result)
+	}
+
+	return resultsMap, nil
+}
+
+func fetchEvents(pb *pocketbase.PocketBase) (map[int][]types.DatabaseEvent, error) {
+	eventsMap := make(map[int][]types.DatabaseEvent)
+
+	records, err := pb.Dao().FindRecordsByExpr("events")
+	if err != nil {
+		return nil, fmt.Errorf("error fetching events: %w", err)
+	}
+
+	for _, record := range records {
+		event := types.DatabaseEvent{
+			PlayerID:   record.GetInt("playerID"),
+			Gameweek:   record.GetInt("gameweek"),
+			EventType:  record.GetString("eventType"),
+			EventValue: record.GetInt("eventValue"),
+		}
+		eventsMap[event.PlayerID] = append(eventsMap[event.PlayerID], event)
+	}
+
+	return eventsMap, nil
+}
+
+func processPlayerEvents(
+	txDao *daos.Dao,
+	collection *models.Collection,
+	playerID int,
+	position int,
+	result types.DatabaseResults,
+	userID string,
+	userLeagues []int,
+	cardsMap map[string][]types.DatabaseCard,
+	eventsMap map[int][]types.DatabaseEvent,
+) error {
+	playerEvents := eventsMap[playerID]
+	log.Printf("[DEBUG] Processing events for player %d, found %d events", playerID, len(playerEvents))
+
+	for _, event := range playerEvents {
+		log.Printf("[DEBUG] Checking event: gameweek=%d, type=%s, value=%d (target gameweek=%d)",
+			event.Gameweek, event.EventType, event.EventValue, result.Gameweek)
+
+		if event.Gameweek == result.Gameweek {
+			log.Printf("[DEBUG] Matched gameweek %d for player %d", event.Gameweek, playerID)
+
+			for cardIndex := 0; cardIndex < event.EventValue; cardIndex++ {
+				for _, leagueID := range userLeagues {
+					cardHash := fmt.Sprintf("%s_%d_%d_%s_%d", userID, leagueID, result.Gameweek, event.EventType, cardIndex)
+					log.Printf("[DEBUG] Checking card hash: %s", cardHash)
+
+					existingCards := cardsMap[userID]
+					cardExists := false
+					for _, existing := range existingCards {
+						if existing.CardHash == cardHash {
+							cardExists = true
+							log.Printf("[DEBUG] Found existing card with hash: %s", cardHash)
+							break
 						}
+					}
+
+					if !cardExists {
+						record := models.NewRecord(collection)
+						record.Set("teamID", result.TeamID)
+						record.Set("userID", userID)
+						record.Set("nominatorTeamID", nil)
+						record.Set("nominatorUserID", "")
+						record.Set("gameweek", result.Gameweek)
+						record.Set("isCompleted", false)
+						record.Set("adminVerified", false)
+						record.Set("type", event.EventType)
+						record.Set("leagueID", leagueID)
+						record.Set("cardHash", cardHash)
+
+						err := txDao.SaveRecord(record)
+						if err != nil {
+							log.Printf("[ERROR] Failed to save card: %v", err)
+							return fmt.Errorf("error saving card record: %w", err)
+						}
+
+						// Add the new card to the cardsMap to prevent duplicates in subsequent processing
+						newCard := types.DatabaseCard{
+							TeamID:   result.TeamID,
+							UserID:   userID,
+							Gameweek: result.Gameweek,
+							Type:     event.EventType,
+							LeagueID: leagueID,
+							CardHash: cardHash,
+						}
+						cardsMap[userID] = append(cardsMap[userID], newCard)
+
+						log.Printf("[SUCCESS] Added new card %d of %d type %s for user %s in league %d gameweek %d position %d",
+							cardIndex+1, event.EventValue, event.EventType, userID, leagueID, result.Gameweek, position)
 					}
 				}
 			}
-
 		}
-
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("transaction failed: %w", err)
 	}
-
-	log.Println("[CardsUpdate] Card update completed")
-
 	return nil
 }
 
