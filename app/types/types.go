@@ -281,3 +281,28 @@ type DatabaseResults struct {
 	Pos14       int    `db:"pos_14"`
 	Pos15       int    `db:"pos_15"`
 }
+
+type DatabaseCard struct {
+	TeamID          int    `db:"teamID"`
+	UserID          string `db:"userID"`
+	NominatorTeamID int    `db:"nominatorTeamID"`
+	NominatorUserID string `db:"nominatorUserID"`
+	Gameweek        int    `db:"gameweek"`
+	IsCompleted     bool   `db:"isCompleted"`
+	AdminVerified   bool   `db:"adminVerified"`
+	Type            string `db:"type"`
+	LeagueID        int    `db:"leagueID"`
+	CardHash        string `db:"cardHash"`
+}
+
+type DatabaseLeague struct {
+	LeagueID int    `db:"leagueID"`
+	UserID   string `db:"userID"`
+}
+
+type DatabaseEvent struct {
+	Gameweek   int    `db:"gameweek"`
+	PlayerID   int    `db:"playerID"`
+	EventType  string `db:"eventType"`
+	EventValue int    `db:"eventValue"`
+}

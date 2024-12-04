@@ -94,7 +94,7 @@ func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 		gameweek := response.Status[0].Event
 		err := checkForEventsUpdate(pb)
 		if err != nil {
-			log.Printf("[HourlyDataCheck] Failed to update results: %v", err)
+			log.Printf("[HourlyDataCheck] Failed to update events: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update events: %v", err))
 		}
 		err = updateGameweekResults(pb, gameweek)
@@ -102,6 +102,9 @@ func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 			log.Printf("[HourlyDataCheck] Failed to update results: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update results: %v", err))
 		}
+
+		// update cards
+		// updated results aggregated
 		return nil
 	}
 
@@ -514,7 +517,7 @@ func updateGameweekResults(pb *pocketbase.PocketBase, gameweek int) error {
 				record.Set("teamID", latestResult.TeamID)
 				record.Set("points", latestResult.Points)
 				record.Set("transfers", latestResult.Transfers)
-				record.Set("hits", latestResult.Hits)
+				record.Set("hits", latestResult.Hits/4)
 				record.Set("benchPoints", latestResult.BenchPoints)
 				record.Set("activeChip", latestResult.ActiveChip)
 				record.Set("pos_1", latestResult.Pos1)
@@ -555,7 +558,7 @@ func updateGameweekResults(pb *pocketbase.PocketBase, gameweek int) error {
 				record.Set("teamID", latestResult.TeamID)
 				record.Set("points", latestResult.Points)
 				record.Set("transfers", latestResult.Transfers)
-				record.Set("hits", latestResult.Hits)
+				record.Set("hits", latestResult.Hits/4)
 				record.Set("benchPoints", latestResult.BenchPoints)
 				record.Set("activeChip", latestResult.ActiveChip)
 				record.Set("pos_1", latestResult.Pos1)
@@ -647,8 +650,163 @@ func flattenAPIResults(results types.GameweekHistory, teamID int, userID string)
 	}
 }
 
-// func updateCards(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+func UpdateCards(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+	log.Println("[CardsUpdate] Starting card update")
 
-// }
+	// Fetch existing players from DB
+	var existingCards []types.DatabaseCard
+	err := pb.Dao().DB().
+		NewQuery("SELECT * FROM cards").
+		All(&existingCards)
+
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf("failed to get existing cards: %w", err)
+	}
+
+	// Create map of existing players for easy lookup
+	cardsMap := make(map[string][]types.DatabaseCard)
+	for _, c := range existingCards {
+		cardsMap[c.UserID] = append(cardsMap[c.UserID], c)
+	}
+
+	// log.Print(cardsMap)
+
+	// Fetch user leagues from DB
+	var userLeagues []types.DatabaseLeague
+	err = pb.Dao().DB().
+		NewQuery("SELECT leagueID, userID FROM leagues where isLinked = TRUE").
+		All(&userLeagues)
+
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf("failed to get user leagues: %w", err)
+	}
+	// Create map of user leagues for easy lookup
+	leagueMap := make(map[string][]int)
+	for _, l := range userLeagues {
+		leagueMap[l.UserID] = append(leagueMap[l.UserID], l.LeagueID)
+	}
+	// log.Print(leagueMap)
+
+	// Fetch existing players from DB
+	var currentResults []types.DatabaseResults
+	err = pb.Dao().DB().
+		NewQuery("SELECT * FROM results").
+		All(&currentResults)
+
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf("failed to get existing results %w", err)
+	}
+
+	// Create map of existing players for easy lookup
+	resultsMap := make(map[string][]types.DatabaseResults)
+	for _, c := range currentResults {
+		resultsMap[c.UserID] = append(resultsMap[c.UserID], c)
+	}
+
+	// Fetch existing players from DB
+	var currentEvents []types.DatabaseEvent
+	err = pb.Dao().DB().
+		NewQuery("SELECT * FROM events").
+		All(&currentEvents)
+
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf("failed to get existing events%w", err)
+	}
+
+	// Create map of existing players for easy lookup
+	eventsMap := make(map[int][]types.DatabaseEvent)
+	for _, c := range currentEvents {
+		eventsMap[c.PlayerID] = append(eventsMap[c.PlayerID], c)
+	}
+
+	// log.Print(eventsMap)
+	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		collection, err := txDao.FindCollectionByNameOrId("cards")
+		if err != nil {
+			return fmt.Errorf("error finding collection: %w", err)
+		}
+
+		// Process each user's results
+		for userID, results := range resultsMap {
+			userLeagues := leagueMap[userID]
+
+			// Skip if user has no linked leagues
+			if len(userLeagues) == 0 {
+				continue
+			}
+
+			// Process each result
+			for _, result := range results {
+				// Get all player IDs from result positions
+				playerIDs := []int{
+					result.Pos1, result.Pos2, result.Pos3, result.Pos4, result.Pos5,
+					result.Pos6, result.Pos7, result.Pos8, result.Pos9, result.Pos10, result.Pos11,
+				}
+
+				// Check each player for card events
+				for _, playerID := range playerIDs {
+					playerEvents := eventsMap[playerID]
+					for _, event := range playerEvents {
+						if event.Gameweek == result.Gameweek {
+							// Create cards for each event value (number of cards)
+							for cardIndex := 0; cardIndex < event.EventValue; cardIndex++ {
+								// Process each league for this card event
+								for _, leagueID := range userLeagues {
+									// Create unique hash including card index
+									cardHash := fmt.Sprintf("%s_%d_%d_%s_%d", userID, leagueID, result.Gameweek, event.EventType, cardIndex)
+
+									// Check if card already exists
+									existingCards := cardsMap[userID]
+									cardExists := false
+									for _, existing := range existingCards {
+										if existing.CardHash == cardHash {
+											cardExists = true
+											break
+										}
+									}
+
+									if !cardExists {
+										// Insert new card record
+										record := models.NewRecord(collection)
+										record.Set("teamID", result.TeamID)
+										record.Set("userID", userID)
+										record.Set("nominatorTeamID", nil)
+										record.Set("nominatorUserID", "")
+										record.Set("gameweek", result.Gameweek)
+										record.Set("isCompleted", false)
+										record.Set("adminVerified", false)
+										record.Set("type", event.EventType)
+										record.Set("leagueID", leagueID)
+										record.Set("cardHash", cardHash)
+										if err := txDao.SaveRecord(record); err != nil {
+											return fmt.Errorf("error saving new card: %w", err)
+										}
+										log.Printf("[CardsUpdate] Added new card %d of %d type %s for user %s in league %d gameweek %d",
+											cardIndex+1, event.EventValue, event.EventType, userID, leagueID, result.Gameweek)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	log.Println("[CardsUpdate] Card update completed")
+
+	return nil
+}
 
 // func updateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) error{}
