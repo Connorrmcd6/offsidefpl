@@ -45,7 +45,7 @@ func main() {
 
 		// lib.UpdateCards(e, pb)
 		// lib.DailyDataCheck(e, pb)
-		lib.HourlyDataCheck(e, pb)
+		// lib.HourlyDataCheck(e, pb)
 
 		// c := cron.New()
 		// c.MustAdd("Weekly Fixture Update Check", "0 10 * * 2", func() {

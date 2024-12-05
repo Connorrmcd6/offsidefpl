@@ -109,6 +109,7 @@ func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update cards: %v", err))
 		}
 		// updated results aggregated
+
 		return nil
 	}
 
@@ -998,4 +999,7 @@ func processPlayerEvents(
 	return nil
 }
 
-// func updateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) error{}
+func updateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+	log.Println("[ResultsAggregating] Starting aggregation pipeline")
+	return nil
+}
