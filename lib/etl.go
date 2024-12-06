@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,8 +43,8 @@ func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 		if todayMidnight == fixtureEndDate {
 			log.Println("[DailyDataCheck] Triggering hourly checks - gameweek completed or test condition met")
 			c := cron.New()
-			c.MustAdd("Hourly ETL", "0 0 * * *", func() {
-				// HourlyDataCheck(e, pb, c)
+			c.MustAdd("Hourly ETL", "0 * * * *", func() {
+				HourlyDataCheck(e, pb, c)
 			})
 			c.Start()
 			return nil
@@ -55,7 +56,7 @@ func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	return nil
 }
 
-func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase, c *cron.Cron) error {
 	log.Println("[HourlyDataCheck] Starting hourly data availability check")
 
 	client := &http.Client{
@@ -110,7 +111,14 @@ func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update cards: %v", err))
 		}
 		// updated results aggregated
+		err = updateResultsAggregated(pb)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update results aggregated: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update results aggregated: %v", err))
+		}
 
+		// Stop cron job
+		c.Remove("Hourly ETL")
 		return nil
 	}
 
@@ -1000,7 +1008,7 @@ func processPlayerEvents(
 	return nil
 }
 
-func UpdateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 	log.Println("[ResultsAggregating] Starting aggregation pipeline")
 
 	// Build map of users with 2+ cards and their max gameweek
@@ -1055,6 +1063,7 @@ func UpdateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) erro
 
 	var aggregatedResults []types.AggregatedResults
 	query := fmt.Sprintf(`
+    WITH new_results AS (
         SELECT 
             gameweek, 
             teamID, 
@@ -1075,17 +1084,23 @@ func UpdateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) erro
             ) as totalPoints
         FROM results 
         GROUP BY gameweek, teamID, userID, points, hits
-        ORDER BY userID, gameweek
-    `, penalizedUsersStr)
+    )
+    SELECT nr.*
+    FROM new_results nr
+    LEFT JOIN aggregated_results ra 
+        ON nr.gameweek = ra.gameweek 
+        AND nr.userID = ra.userID
+    WHERE ra.id IS NULL
+    ORDER BY nr.userID, nr.gameweek
+`, penalizedUsersStr)
 
 	err = pb.Dao().DB().NewQuery(query).All(&aggregatedResults)
 	if err != nil {
 		log.Printf("[ResultsAggregating] Error executing aggregation query: %v", err)
 		return fmt.Errorf("error aggregating results: %w", err)
 	}
-	log.Printf("[ResultsAggregating] Generated %d aggregated results", len(aggregatedResults))
 
-	log.Println("[ResultsAggregating] Starting transaction to save results...")
+	// Now we can directly save all results since we already filtered out existing ones
 	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		collection, err := txDao.FindCollectionByNameOrId("aggregated_results")
 		if err != nil {
@@ -1094,28 +1109,7 @@ func UpdateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) erro
 		}
 
 		savedCount := 0
-		skippedCount := 0
-		// Insert only new aggregated results
 		for _, result := range aggregatedResults {
-			// Check if record already exists
-			existing, err := txDao.FindFirstRecordByFilter("results_aggregated",
-				"gameweek = {:gameweek} && userID = {:userID}",
-				dbx.Params{"gameweek": result.Gameweek, "userID": result.UserID},
-			)
-
-			if err != nil && err.Error() != "sql: no rows in result set" {
-				log.Printf("[ResultsAggregating] Error checking existing record for user %s, gameweek %d: %v",
-					result.UserID, result.Gameweek, err)
-				return fmt.Errorf("error checking existing record: %w", err)
-			}
-
-			// Skip if record already exists
-			if existing != nil {
-				skippedCount++
-				continue
-			}
-
-			// Create new record only if it doesn't exist
 			record := models.NewRecord(collection)
 			record.Set("gameweek", result.Gameweek)
 			record.Set("teamID", result.TeamID)
@@ -1130,8 +1124,7 @@ func UpdateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) erro
 			}
 			savedCount++
 		}
-		log.Printf("[ResultsAggregating] Transaction complete: %d records saved, %d records skipped",
-			savedCount, skippedCount)
+		log.Printf("[ResultsAggregating] Transaction complete: %d new records saved", savedCount)
 		return nil
 	})
 
@@ -1140,11 +1133,75 @@ func UpdateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) erro
 		return fmt.Errorf("transaction failed: %w", err)
 	}
 
+	err = verifyExpiredCards(pb)
+	if err != nil {
+		log.Printf("[ResultsAggregating] Error verifying expired cards: %v", err)
+		return fmt.Errorf("error verifying expired cards: %w", err)
+	}
+
 	log.Println("[ResultsAggregating] Aggregation pipeline completed successfully")
 	return nil
 }
 
-// func verifyExpiredCards(pb *pocketbase.PocketBase) error {
-// 	// go through aggregated results, if you find a week where points are 0 then set the card to verified for that user and that week
-// 	return nil
-// }
+func verifyExpiredCards(pb *pocketbase.PocketBase) error {
+	log.Println("[ExpiredCardCheck] pipeline starting")
+
+	var aggregatedResults []types.AggregatedResults
+	err := pb.Dao().DB().NewQuery("SELECT * FROM aggregated_results where points = 0").All(&aggregatedResults)
+
+	if err != nil {
+		log.Printf("[ExpiredCardCheck] Error fetching aggregated results: %v", err)
+		return fmt.Errorf("error fetching aggregated results: %w", err)
+	}
+
+	log.Printf("[ExpiredCardCheck] Found %d results with 0 points", len(aggregatedResults))
+	if len(aggregatedResults) == 0 {
+		return nil
+	}
+
+	// Build map of userID -> gameweeks for easier lookup
+	userGameweeks := make(map[string][]int)
+	for _, result := range aggregatedResults {
+		userGameweeks[result.UserID] = append(userGameweeks[result.UserID], result.Gameweek)
+	}
+
+	// Update cards in transaction
+	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		for userID, gameweeks := range userGameweeks {
+			// Convert gameweeks to string for IN clause
+			gameweekStrs := make([]string, len(gameweeks))
+			for i, gw := range gameweeks {
+				gameweekStrs[i] = strconv.Itoa(gw)
+			}
+			// gameweeksStr := strings.Join(gameweekStrs, ",")
+
+			// Execute bulk update
+			updateQuery := fmt.Sprintf(`
+                UPDATE cards 
+                SET adminVerified = TRUE, 
+                    isCompleted = TRUE
+                WHERE userID = '%s' 
+                AND adminVerified = FALSE`,
+				userID,
+			)
+
+			result, err := txDao.DB().NewQuery(updateQuery).Execute()
+			if err != nil {
+				log.Printf("[ExpiredCardCheck] Error updating cards for user %s: %v", userID, err)
+				return fmt.Errorf("error updating cards: %w", err)
+			}
+
+			rowsAffected, _ := result.RowsAffected()
+			log.Printf("[ExpiredCardCheck] Updated %d cards for user %s", rowsAffected, userID)
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[ExpiredCardCheck] Transaction failed: %v", err)
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	log.Println("[ExpiredCardCheck] Pipeline completed successfully")
+	return nil
+}

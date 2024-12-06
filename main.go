@@ -12,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/cron"
 )
 
 func main() {
@@ -42,28 +43,24 @@ func main() {
 		lib.GetAllPlayers(e, pb)
 		lib.GetAllFixtureEvents(e, pb)
 		lib.GetAllFixtures(e, pb)
-		lib.UpdateResultsAggregated(e, pb)
 
 		// lib.DailyDataCheck(e, pb)
 		// lib.HourlyDataCheck(e, pb)
 
-		// c := cron.New()
-		// c.MustAdd("Weekly Fixture Update Check", "0 10 * * 2", func() {
-		// 	lib.CheckForFixtureUpdates(e, pb)
-		// })
+		c := cron.New()
+		c.MustAdd("Weekly Fixture Update Check", "0 10 * * 2", func() {
+			lib.CheckForFixtureUpdates(e, pb)
+		})
 
-		// c.MustAdd("Weekly Player Update Check", "0 10 * * 2", func() {
-		// 	lib.CheckForPlayerUpdates(e, pb)
-		// })
-
-		// c.Start()
+		c.MustAdd("Weekly Player Update Check", "0 10 * * 2", func() {
+			lib.CheckForPlayerUpdates(e, pb)
+		})
 
 		// Add cron job to run daily ETL
-		// c := cron.New()
-		// c.MustAdd("daily ETL", "*/2 * * * *", func() {
-		// 	lib.DailyDataCheck(e, pb)
-		// })
-		// c.Start()
+		c.MustAdd("daily ETL", "0 3 * * *", func() {
+			lib.DailyDataCheck(e, pb)
+		})
+		c.Start()
 
 		return nil
 	})
