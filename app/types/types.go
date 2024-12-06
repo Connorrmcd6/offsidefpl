@@ -306,3 +306,18 @@ type DatabaseEvent struct {
 	EventType  string `db:"eventType"`
 	EventValue int    `db:"eventValue"`
 }
+
+type OutstandingCards struct {
+	TeamID   int    `db:"teamID"`
+	UserID   string `db:"userID"`
+	Gameweek int    `db:"gameweek"`
+	CardType string `db:"type"`
+}
+
+type AggregatedResults struct {
+	Gameweek    int    `db:"gameweek"`
+	TeamID      int    `db:"teamID"`
+	UserID      string `db:"userID"`
+	Points      int    `db:"points"`
+	TotalPoints int    `db:"totalPoints"`
+}

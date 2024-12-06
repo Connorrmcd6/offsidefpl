@@ -42,8 +42,8 @@ func main() {
 		lib.GetAllPlayers(e, pb)
 		lib.GetAllFixtureEvents(e, pb)
 		lib.GetAllFixtures(e, pb)
+		lib.UpdateResultsAggregated(e, pb)
 
-		// lib.UpdateCards(e, pb)
 		// lib.DailyDataCheck(e, pb)
 		// lib.HourlyDataCheck(e, pb)
 

@@ -13,3 +13,6 @@ the weekly pipeline needs to make sure all fpl data is updated, such as players 
         - if they have run upsert transformation
 
 - also make a pipeline that updates fixtures dates          
+
+
+- fetch user results with running total

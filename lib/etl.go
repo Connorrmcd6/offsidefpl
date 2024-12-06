@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -999,7 +1000,151 @@ func processPlayerEvents(
 	return nil
 }
 
-func updateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+func UpdateResultsAggregated(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	log.Println("[ResultsAggregating] Starting aggregation pipeline")
+
+	// Build map of users with 2+ cards and their max gameweek
+	cardCounts := make(map[string]map[int]int)
+	maxGameweeks := make(map[string]int)
+
+	var outstandingCards []types.OutstandingCards
+	log.Println("[ResultsAggregating] Fetching outstanding cards...")
+	err := pb.Dao().DB().
+		NewQuery("SELECT distinct teamID, userID, gameweek, type FROM cards where adminVerified = FALSE").
+		All(&outstandingCards)
+
+	if err != nil {
+		log.Printf("[ResultsAggregating] Error fetching cards: %v", err)
+		return fmt.Errorf("error fetching cards: %w", err)
+	}
+	log.Printf("[ResultsAggregating] Found %d outstanding cards", len(outstandingCards))
+
+	// Count cards per user per gameweek and track max gameweeks
+	for _, card := range outstandingCards {
+		if cardCounts[card.UserID] == nil {
+			cardCounts[card.UserID] = make(map[int]int)
+		}
+		cardCounts[card.UserID][card.Gameweek]++
+
+		if card.Gameweek > maxGameweeks[card.UserID] {
+			maxGameweeks[card.UserID] = card.Gameweek
+		}
+	}
+
+	// Build list of users with 2+ cards
+	penalizedUsers := make([]string, 0)
+	for userID, weeks := range cardCounts {
+		totalCards := 0
+		for _, count := range weeks {
+			totalCards += count
+		}
+		if totalCards >= 2 {
+			penalizedUsers = append(penalizedUsers, userID)
+		}
+	}
+
+	log.Printf("[ResultsAggregating] Found %d users to penalize", len(penalizedUsers))
+	if len(penalizedUsers) == 0 {
+		log.Println("[ResultsAggregating] No users to penalize, exiting")
+		return nil
+	}
+
+	// Convert penalized users to SQL IN clause
+	penalizedUsersStr := "'" + strings.Join(penalizedUsers, "','") + "'"
+	log.Printf("[ResultsAggregating] Executing aggregation query for users: %s", penalizedUsersStr)
+
+	var aggregatedResults []types.AggregatedResults
+	query := fmt.Sprintf(`
+        SELECT 
+            gameweek, 
+            teamID, 
+            userID,
+            CASE 
+                WHEN userID IN (%s) AND gameweek = (
+                    SELECT MAX(gameweek) 
+                    FROM cards 
+                    WHERE adminVerified = FALSE 
+                    AND userID = results.userID
+                ) THEN 0
+                ELSE points
+            END as points,
+            SUM(points - (hits * 4)) OVER (
+                PARTITION BY userID 
+                ORDER BY gameweek
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ) as totalPoints
+        FROM results 
+        GROUP BY gameweek, teamID, userID, points, hits
+        ORDER BY userID, gameweek
+    `, penalizedUsersStr)
+
+	err = pb.Dao().DB().NewQuery(query).All(&aggregatedResults)
+	if err != nil {
+		log.Printf("[ResultsAggregating] Error executing aggregation query: %v", err)
+		return fmt.Errorf("error aggregating results: %w", err)
+	}
+	log.Printf("[ResultsAggregating] Generated %d aggregated results", len(aggregatedResults))
+
+	log.Println("[ResultsAggregating] Starting transaction to save results...")
+	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		collection, err := txDao.FindCollectionByNameOrId("aggregated_results")
+		if err != nil {
+			log.Printf("[ResultsAggregating] Error finding collection: %v", err)
+			return fmt.Errorf("error finding collection: %w", err)
+		}
+
+		savedCount := 0
+		skippedCount := 0
+		// Insert only new aggregated results
+		for _, result := range aggregatedResults {
+			// Check if record already exists
+			existing, err := txDao.FindFirstRecordByFilter("results_aggregated",
+				"gameweek = {:gameweek} && userID = {:userID}",
+				dbx.Params{"gameweek": result.Gameweek, "userID": result.UserID},
+			)
+
+			if err != nil && err.Error() != "sql: no rows in result set" {
+				log.Printf("[ResultsAggregating] Error checking existing record for user %s, gameweek %d: %v",
+					result.UserID, result.Gameweek, err)
+				return fmt.Errorf("error checking existing record: %w", err)
+			}
+
+			// Skip if record already exists
+			if existing != nil {
+				skippedCount++
+				continue
+			}
+
+			// Create new record only if it doesn't exist
+			record := models.NewRecord(collection)
+			record.Set("gameweek", result.Gameweek)
+			record.Set("teamID", result.TeamID)
+			record.Set("userID", result.UserID)
+			record.Set("points", result.Points)
+			record.Set("totalPoints", result.TotalPoints)
+
+			if err := txDao.SaveRecord(record); err != nil {
+				log.Printf("[ResultsAggregating] Error saving record for user %s, gameweek %d: %v",
+					result.UserID, result.Gameweek, err)
+				return fmt.Errorf("error saving aggregated result: %w", err)
+			}
+			savedCount++
+		}
+		log.Printf("[ResultsAggregating] Transaction complete: %d records saved, %d records skipped",
+			savedCount, skippedCount)
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[ResultsAggregating] Transaction failed: %v", err)
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	log.Println("[ResultsAggregating] Aggregation pipeline completed successfully")
 	return nil
 }
+
+// func verifyExpiredCards(pb *pocketbase.PocketBase) error {
+// 	// go through aggregated results, if you find a week where points are 0 then set the card to verified for that user and that week
+// 	return nil
+// }
