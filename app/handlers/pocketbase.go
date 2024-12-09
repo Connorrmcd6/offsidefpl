@@ -336,3 +336,126 @@ func CheckForLeague(c echo.Context) error {
 
 	return lib.Render(c, http.StatusOK, views.ProfilePage())
 }
+
+const (
+	leaguesTimeout = 10 * time.Second
+	defaultLimit   = 1
+)
+
+// getDefaultLeague retrieves the default league for a given teamID
+func getDefaultLeague(txDao *daos.Dao, teamID interface{}) (*models.Record, error) {
+	return txDao.FindFirstRecordByFilter(leaguesCollection,
+		"teamID = {:teamID} && isDefault = TRUE",
+		dbx.Params{"teamID": teamID})
+}
+
+// getLeagueMembers retrieves all members of a league
+func getLeagueMembers(txDao *daos.Dao, leagueID int) ([]int, error) {
+	leagueRecords, err := txDao.FindRecordsByExpr(leaguesCollection,
+		dbx.NewExp("leagueID = {:leagueID}", dbx.Params{"leagueID": leagueID}))
+	if err != nil {
+		return nil, fmt.Errorf("find league members: %w", err)
+	}
+
+	teamIDs := make([]int, 0, len(leagueRecords))
+	for _, record := range leagueRecords {
+		teamIDs = append(teamIDs, record.GetInt("teamID"))
+	}
+	return teamIDs, nil
+}
+
+// getMaxGameweek retrieves the latest gameweek number
+func getMaxGameweek(txDao *daos.Dao) (int, error) {
+	maxGameweek := []struct {
+		Gameweek int `db:"gameweek"`
+	}{}
+
+	err := txDao.DB().
+		Select("aggregated_results.gameweek").
+		From("aggregated_results").
+		OrderBy("gameweek DESC").
+		Limit(defaultLimit).
+		All(&maxGameweek)
+
+	if err != nil {
+		return 0, fmt.Errorf("find max gameweek: %w", err)
+	}
+
+	if len(maxGameweek) == 0 {
+		return 0, fmt.Errorf("no gameweeks found")
+	}
+
+	return maxGameweek[0].Gameweek, nil
+}
+
+// GameweekWinnerGet returns the winner for the most recent gameweek
+func GameweekWinnerGet(c echo.Context) error {
+	_, cancel := context.WithTimeout(c.Request().Context(), leaguesTimeout)
+	defer cancel()
+
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
+	}
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+
+	var winner types.GameweekWinner
+
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		teamID := record.Get("teamID")
+		if teamID == nil {
+			return fmt.Errorf("invalid team ID")
+		}
+
+		defaultLeague, err := getDefaultLeague(txDao, teamID)
+		if err != nil {
+			return fmt.Errorf("default league not found: %w", err)
+		}
+
+		leagueID := defaultLeague.GetInt("leagueID")
+		teamIDs, err := getLeagueMembers(txDao, leagueID)
+		if err != nil {
+			return err
+		}
+
+		if len(teamIDs) == 0 {
+			return fmt.Errorf("no teams found in league")
+		}
+
+		gameweekNum, err := getMaxGameweek(txDao)
+		if err != nil {
+			return err
+		}
+
+		interfaceTeamIDs := make([]interface{}, len(teamIDs))
+		for i, id := range teamIDs {
+			interfaceTeamIDs[i] = id
+		}
+
+		err = txDao.DB().
+			Select("p.gameweek", "u.firstName", "u.teamName", "p.points").
+			From("aggregated_results p").
+			InnerJoin("users u", dbx.NewExp("p.teamID = u.teamID")).
+			Where(dbx.NewExp("p.gameweek = {:maxGW}", dbx.Params{"maxGW": gameweekNum})).
+			AndWhere(dbx.In("p.teamID", interfaceTeamIDs...)).
+			OrderBy("p.points DESC").
+			Limit(defaultLimit).
+			One(&winner)
+
+		if err != nil {
+			return fmt.Errorf("find winner: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	}
+
+	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName))
+}

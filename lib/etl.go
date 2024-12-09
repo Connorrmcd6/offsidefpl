@@ -44,7 +44,7 @@ func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 			log.Println("[DailyDataCheck] Triggering hourly checks - gameweek completed or test condition met")
 			c := cron.New()
 			c.MustAdd("Hourly ETL", "0 * * * *", func() {
-				HourlyDataCheck(e, pb, c)
+				hourlyDataCheck(pb, c)
 			})
 			c.Start()
 			return nil
@@ -56,7 +56,7 @@ func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	return nil
 }
 
-func HourlyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase, c *cron.Cron) error {
+func hourlyDataCheck(pb *pocketbase.PocketBase, c *cron.Cron) error {
 	log.Println("[HourlyDataCheck] Starting hourly data availability check")
 
 	client := &http.Client{

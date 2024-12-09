@@ -321,3 +321,10 @@ type AggregatedResults struct {
 	Points      int    `db:"points"`
 	TotalPoints int    `db:"totalPoints"`
 }
+
+type GameweekWinner struct {
+	Gameweek  int    `db:"gameweek"`
+	FirstName string `db:"firstName"`
+	TeamName  string `db:"teamName"`
+	Points    int    `db:"points"`
+}

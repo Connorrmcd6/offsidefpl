@@ -14,8 +14,8 @@ templ Profile(user *models.Record) {
 }
 
 templ ProfilePage() {
-	<div id="stats" class="flex">
-		@components.Statbar(1, "Connor", "AllhitsNoMisses")
+	<div id="stats" class="flex" hx-get="/app/gamweek_winner" hx-trigger="load" hx-target="this">
+		// @components.Statbar(1, "Connor", "AllhitsNoMisses")
 	</div>
 	<div id="fines" class="flex">
 		@components.FinesTable()
