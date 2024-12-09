@@ -1,6 +1,12 @@
 package components
 
-templ FinesTable() {
+import (
+	"github.com/cmcd97/bytesize/app/types"
+	"github.com/cmcd97/bytesize/lib"
+	"strconv"
+)
+
+templ FinesTable(cards []types.DatabaseCard) {
 	<div class="mb-10">
 		<p class="font-bold text-base-content">Cards</p>
 		<div class="w-72 flex items-center justify-center mb-2 join">
@@ -8,6 +14,9 @@ templ FinesTable() {
 			<button class="btn btn-outline btn-sm btn-secondary join-item w-24">Nominate</button>
 			<button class="btn btn-outline btn-sm btn-accent join-item text-accent-content w-24">Rebound</button>
 		</div>
+		if len(cards) == 0 {
+			<p class="text-base-content">No cards to display</p>
+		}
 		<div class="overflow-x-auto w-72 rounded-lg font-small-text">
 			<table class="table table-xs">
 				<!-- head -->
@@ -15,29 +24,21 @@ templ FinesTable() {
 					<tr>
 						<th>Week</th>
 						<th>Reason</th>
-						<th>Deadline</th>
+						<th></th>
 						<th></th>
 					</tr>
 				</thead>
 				<tbody class="bg-base-100">
-					<!-- row 1 -->
-					<tr>
-						<th>1</th>
-						<td>
-							Own Goal
-						</td>
-						<td>2024-10-10</td>
-						<td><button class="btn btn-xs btn-outline btn-primary">submit</button></td>
-					</tr>
-					<!-- row 2 -->
-					<tr>
-						<th>2</th>
-						<td>
-							Nomination
-						</td>
-						<td>2024-10-20</td>
-						<td><button class="btn btn-xs btn-outline btn-primary">submit</button></td>
-					</tr>
+					for _, card := range cards {
+						<tr>
+							<th>{ strconv.Itoa(card.Gameweek) }</th>
+							<td>
+								{ lib.ReplaceUnderscoresWithSpaces(card.Type) }
+							</td>
+							<td><button class="btn btn-xs btn-outline btn-primary">details</button></td>
+							<td><button class="btn btn-xs btn-outline btn-accent">submit</button></td>
+						</tr>
+					}
 				</tbody>
 			</table>
 		</div>

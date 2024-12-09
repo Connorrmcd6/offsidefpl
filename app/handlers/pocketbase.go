@@ -459,3 +459,74 @@ func GameweekWinnerGet(c echo.Context) error {
 
 	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName))
 }
+
+func UserCardsGet(c echo.Context) error {
+	_, cancel := context.WithTimeout(c.Request().Context(), leaguesTimeout)
+	defer cancel()
+
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		log.Printf("Authentication failed: record=%v, ok=%v", record, ok)
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
+	}
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+
+	var cards []types.DatabaseCard
+
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		teamID := record.Get("teamID")
+		if teamID == nil {
+			log.Printf("Invalid team ID: %v", teamID)
+			return fmt.Errorf("invalid team ID")
+		}
+		log.Printf("Processing request for teamID: %v", teamID)
+
+		defaultLeague, err := getDefaultLeague(txDao, teamID)
+		if err != nil {
+			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
+			return fmt.Errorf("default league not found: %w", err)
+		}
+
+		leagueID := defaultLeague.GetInt("leagueID")
+		log.Printf("Found league ID: %v", leagueID)
+
+		teamIDs, err := getLeagueMembers(txDao, leagueID)
+		if err != nil {
+			log.Printf("Failed to get league members: leagueID=%v, error=%v", leagueID, err)
+			return err
+		}
+
+		if len(teamIDs) == 0 {
+			log.Printf("No teams found in league: leagueID=%v", leagueID)
+			return fmt.Errorf("no teams found in league")
+		}
+		log.Printf("Found %d teams in league", len(teamIDs))
+
+		err = txDao.DB().
+			Select("cards.*").
+			From("cards").
+			Where(dbx.NewExp("teamID = {:team_id} AND leagueID = {:league_id}", dbx.Params{"team_id": teamID, "league_id": leagueID})).
+			OrderBy("gameweek asc").
+			All(&cards)
+
+		if err != nil {
+			log.Printf("Database query failed: teamID=%v, leagueID=%v, error=%v", teamID, leagueID, err)
+			return fmt.Errorf("find cards: %w", err)
+		}
+
+		log.Printf("Retrieved %d cards for team %v in league %v", len(cards), teamID, leagueID)
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Transaction failed: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	}
+
+	return lib.Render(c, http.StatusOK, components.FinesTable(cards))
+}
