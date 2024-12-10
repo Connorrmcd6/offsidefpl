@@ -20,8 +20,8 @@ templ ProfilePage() {
 	<div id="fines" class="flex" hx-get="/app/user_cards" hx-trigger="load" hx-target="this">
 		// @components.FinesTable()
 	</div>
-	<div id="leagueTable" class="flex">
-		@components.LeagueTable()
+	<div id="leagueTable" class="flex" hx-get="/app/league_standings" hx-trigger="load" hx-target="this">
+		// @components.LeagueTable()
 	</div>
 }
 

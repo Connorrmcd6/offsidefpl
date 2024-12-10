@@ -19,7 +19,10 @@ func ReplaceUnderscoresWithSpaces(name string) string {
 	if name == "" {
 		return name
 	}
-	return strings.ReplaceAll(name, "_", " ")
+	// First replace underscores with spaces
+	name = strings.ReplaceAll(name, "_", " ")
+	// Then remove trailing 's' if present
+	return strings.TrimSuffix(name, "s")
 }
 
 // CreateEventHash generates a unique 32-character identifier from fixture data.

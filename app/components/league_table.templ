@@ -1,6 +1,11 @@
 package components
 
-templ LeagueTable() {
+import (
+	"github.com/cmcd97/bytesize/app/types"
+	"strconv"
+)
+
+templ LeagueTable(leagueRows []types.LeagueStandingRow, gameweek int) {
 	<div class="overflow-x-auto w-72 rounded-lg">
 		<p class="font-bold text-base-content">League Standings</p>
 		<table class="table table-xs font-small-text">
@@ -9,105 +14,35 @@ templ LeagueTable() {
 				<tr>
 					<th>Pos</th>
 					<th>Player</th>
-					<th>Cards</th>
+					<th>GW{ strconv.Itoa(gameweek) }</th>
+					<th>Total</th>
 				</tr>
 			</thead>
 			<tbody class="bg-base-100">
-				<!-- row 1 -->
-				<tr>
-					<th>1</th>
-					<td>
-						<div>
-							<div class="font-bold">Connor McDonald</div>
-							<div class="text-sm opacity-50">AllhitsNoMisses</div>
-						</div>
-					</td>
-					<td>
-						<a href="/path/to/your/image.svg" target="_blank">
-							<img src="/public/assets/yellowRed.svg" class="h-4 w-4" alt="Icon"/>
-						</a>
-					</td>
-				</tr>
-				<!-- row 2 -->
-				<tr>
-					<th>2</th>
-					<td>
-						<div>
-							<div class="font-bold">Alex Wietzorrek</div>
-							<div class="text-sm opacity-50">JoaoPedroPedroPedro</div>
-						</div>
-					</td>
-					<td>
-						<a href="/path/to/your/image.svg" target="_blank">
-							<img src="/public/assets/yellow.svg" class="h-4 w-4" alt="Icon"/>
-						</a>
-					</td>
-				</tr>
-				<!-- row 3 -->
-				<tr>
-					<th>3</th>
-					<td>
-						<div>
-							<div class="font-bold">Ryan Shackleton</div>
-							<div class="text-sm opacity-50">FindingTimo</div>
-						</div>
-					</td>
-					<td>
-						<a href="/path/to/your/image.svg" target="_blank">
-							<img src="/public/assets/red.svg" class="h-4 w-4" alt="Icon"/>
-						</a>
-					</td>
-				</tr>
-				<tr>
-					<th>3</th>
-					<td>
-						<div>
-							<div class="font-bold">Ryan Shackleton</div>
-							<div class="text-sm opacity-50">FindingTimo</div>
-						</div>
-					</td>
-					<td></td>
-				</tr>
-				<tr>
-					<th>3</th>
-					<td>
-						<div>
-							<div class="font-bold">Ryan Shackleton</div>
-							<div class="text-sm opacity-50">FindingTimo</div>
-						</div>
-					</td>
-					<td></td>
-				</tr>
-				<tr>
-					<th>3</th>
-					<td>
-						<div>
-							<div class="font-bold">Ryan Shackleton</div>
-							<div class="text-sm opacity-50">FindingTimo</div>
-						</div>
-					</td>
-					<td></td>
-				</tr>
-				<tr>
-					<th>3</th>
-					<td>
-						<div>
-							<div class="font-bold">Ryan Shackleton</div>
-							<div class="text-sm opacity-50">FindingTimo</div>
-						</div>
-					</td>
-					<td></td>
-				</tr>
-				<tr>
-					<th>3</th>
-					<td>
-						<div>
-							<div class="font-bold">Ryan Shackleton</div>
-							<div class="text-sm opacity-50">FindingTimo</div>
-						</div>
-					</td>
-					<td></td>
-				</tr>
+				for _, row := range leagueRows {
+					<tr>
+						<th>{ strconv.Itoa(row.Position) }</th>
+						<td>
+							<div>
+								<div class="font-bold flex flex-row gap-2">
+									{ row.FirstName }
+									if row.CardCount >= 2 {
+										<a href="/path/to/your/image.svg" target="_blank">
+											<img src="/public/assets/yellowRed.svg" class="h-4 w-4" alt="Icon"/>
+										</a>
+									} else if row.CardCount == 1 {
+										<a href="/path/to/your/image.svg" target="_blank">
+											<img src="/public/assets/yellow.svg" class="h-4 w-4" alt="Icon"/>
+										</a>
+									}
+								</div>
+								<div class="text-sm opacity-50">{ row.TeamName }</div>
+							</div>
+						</td>
+						<td>{ strconv.Itoa(row.GameweekPoints) }</td>
+						<td>{ strconv.Itoa(row.TotalPoints) }</td>
+					</tr>
+				}
 			</tbody>
 		</table>
 	</div>
