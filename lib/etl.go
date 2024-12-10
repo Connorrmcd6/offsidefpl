@@ -32,18 +32,19 @@ func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 		log.Printf("[DailyDataCheck] Database query failed: %v", err)
 		return fmt.Errorf("failed to process fixtures: %w", err)
 	}
-
 	for _, ts := range timestamps {
 		fixtureEndDate, err := roundUpToNextDay(ts.TS)
+
 		if err != nil {
 			log.Printf("[DailyDataCheck] Date parsing error: %v", err)
 			return fmt.Errorf("failed to parse date: %w", err)
 		}
-
+		log.Println(todayMidnight, fixtureEndDate)
 		if todayMidnight == fixtureEndDate {
+
 			log.Println("[DailyDataCheck] Triggering hourly checks - gameweek completed or test condition met")
 			c := cron.New()
-			c.MustAdd("Hourly ETL", "0 * * * *", func() {
+			c.MustAdd("Hourly ETL", "10 * * * *", func() {
 				hourlyDataCheck(pb, c)
 			})
 			c.Start()
@@ -127,6 +128,10 @@ func hourlyDataCheck(pb *pocketbase.PocketBase, c *cron.Cron) error {
 
 func roundUpToNextDay(dateStr string) (time.Time, error) {
 	// Parse the input date
+	if dateStr == "" {
+		dateStr = time.Now().AddDate(0, 0, -1).Format("2006-01-02 15:04:05.000Z")
+	}
+
 	t, err := time.Parse("2006-01-02 15:04:05.000Z", dateStr)
 	if err != nil {
 		return time.Time{}, err
@@ -138,7 +143,7 @@ func roundUpToNextDay(dateStr string) (time.Time, error) {
 }
 
 func getTodayMidnight() time.Time {
-	return time.Now().Truncate(24 * time.Hour)
+	return time.Now().UTC().Truncate(24 * time.Hour)
 }
 
 func CheckForFixtureUpdates(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
@@ -1051,11 +1056,11 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 		}
 	}
 
-	log.Printf("[ResultsAggregating] Found %d users to penalize", len(penalizedUsers))
-	if len(penalizedUsers) == 0 {
-		log.Println("[ResultsAggregating] No users to penalize, exiting")
-		return nil
-	}
+	// log.Printf("[ResultsAggregating] Found %d users to penalize", len(penalizedUsers))
+	// if len(penalizedUsers) == 0 {
+	// 	log.Println("[ResultsAggregating] No users to penalize, exiting")
+	// 	return nil
+	// }
 
 	// Convert penalized users to SQL IN clause
 	penalizedUsersStr := "'" + strings.Join(penalizedUsers, "','") + "'"
