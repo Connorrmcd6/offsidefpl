@@ -23,10 +23,13 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	appGroup.GET("/check_for_league", handlers.CheckForLeague)
 	appGroup.GET("/rules", handlers.RulesGet)
 	appGroup.GET("/gamweek_winner", handlers.GameweekWinnerGet)
+	appGroup.GET("/admin_verifications", handlers.AdminVerifications)
 	appGroup.GET("/user_cards", handlers.UserCardsGet)
 	appGroup.GET("/league_standings", handlers.LeagueStandingsGet)
 	appGroup.POST("/submit_preview", handlers.CardSubmitPreview)
 	appGroup.POST("/submit", handlers.SubmitCard)
+	appGroup.POST("/approval_preview", handlers.ApprovalPreview)
+	appGroup.POST("/approve", handlers.ApproveCard)
 	appGroup.GET("/redirect", handlers.Redirect)
 	e.Router.GET("/", func(c echo.Context) error {
 		return c.Redirect(303, "/app")

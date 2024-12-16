@@ -17,6 +17,8 @@ templ ProfilePage() {
 	<div id="stats" class="flex" hx-get="/app/gamweek_winner" hx-trigger="load" hx-target="this">
 		// @components.Statbar(1, "Connor", "AllhitsNoMisses")
 	</div>
+	<div id="submissions" class="flex" hx-get="/app/admin_verifications" hx-trigger="load" hx-target="this"></div>
+	// @components.CardsTable()
 	<div id="fines" class="flex" hx-get="/app/user_cards" hx-trigger="load" hx-target="this">
 		// @components.FinesTable()
 	</div>

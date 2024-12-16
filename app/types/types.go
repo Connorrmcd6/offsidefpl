@@ -338,3 +338,17 @@ type LeagueStandingRow struct {
 	TotalPoints    int    `db:"totalPoints"`
 	CardCount      int    `db:"cardCount"`
 }
+
+type CardApprovals struct {
+	TeamID          int    `db:"teamID"`
+	UserID          string `db:"userID"`
+	NominatorTeamID int    `db:"nominatorTeamID"`
+	NominatorUserID string `db:"nominatorUserID"`
+	Gameweek        int    `db:"gameweek"`
+	IsCompleted     bool   `db:"isCompleted"`
+	AdminVerified   bool   `db:"adminVerified"`
+	Type            string `db:"type"`
+	LeagueID        int    `db:"leagueID"`
+	CardHash        string `db:"cardHash"`
+	Person          string `db:"person"`
+}

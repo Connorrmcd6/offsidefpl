@@ -1,0 +1,42 @@
+package components
+
+import (
+	"github.com/cmcd97/bytesize/app/types"
+	"github.com/cmcd97/bytesize/lib"
+)
+
+templ ApprovalTable(cards []types.CardApprovals) {
+	if len(cards) > 0 {
+		<div class="mb-4">
+			<p class="font-bold text-base-content">Approvals</p>
+			<div class="overflow-x-auto w-72 rounded-lg font-small-text">
+				<table class="table table-xs">
+					<!-- head -->
+					<thead class="bg-accent text-accent-content font-bold">
+						<tr>
+							<th>Person</th>
+							<th>Reason</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody class="bg-base-100">
+						for _, card := range cards {
+							if card.IsCompleted && !card.AdminVerified {
+								<tr>
+									<td>{ card.Person }</td>
+									<td>
+										{ lib.ReplaceUnderscoresWithSpaces(card.Type) }
+									</td>
+									<td><button class="btn btn-xs btn-outline btn-accent" onclick="approvalModal.showModal()" value={ card.CardHash } hx-post="/app/approval_preview" hx-target="#approvalModal" name="cardHash">Approve</button></td>
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+		<dialog id="approvalModal" class="modal"></dialog>
+	} else {
+		<div class="mb-4 hidden"></div>
+	}
+}
