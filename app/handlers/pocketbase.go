@@ -621,3 +621,109 @@ func LeagueStandingsGet(c echo.Context) error {
 
 	return lib.Render(c, http.StatusOK, components.LeagueTable(leagueRows, gameweek))
 }
+
+func CardSubmitPreview(c echo.Context) error {
+	cardHash := c.FormValue("cardHash")
+
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		log.Printf("Authentication failed: record=%v, ok=%v", record, ok)
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
+	}
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+
+	card, err := pb.Dao().FindFirstRecordByFilter(
+		"cards",
+		"cardHash = {:cardHash}",
+		dbx.Params{"cardHash": cardHash},
+	)
+	// log.Print("card: %v", card)
+
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	}
+
+	nominatorTeamID := card.GetInt("nominatorTeamID")
+	cardGameweek := card.GetInt("gameweek")
+	cardType := card.Get("type")
+
+	if nominatorTeamID != 0 {
+		nominator, err := pb.Dao().FindFirstRecordByFilter(
+			"users",
+			"teamID = {:teamID}",
+			dbx.Params{"teamID": nominatorTeamID},
+		)
+		if err != nil {
+			log.Printf("query failed: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+		}
+
+		var msg string
+		if cardType == "nomination" {
+			msg = fmt.Sprintf("a nomination by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
+		} else if cardType == "reverse" {
+			msg = fmt.Sprintf("an uno reverse by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
+		}
+
+		return lib.Render(c, http.StatusOK, components.SubmitPreview(msg, cardHash))
+	}
+
+	if nominatorTeamID == 0 {
+		var msg string
+		if cardType == "own_goals" {
+			msg = fmt.Sprintf("an own goal in gameweek %d", cardGameweek)
+		} else {
+			msg = fmt.Sprintf("a red card in gameweek %d", cardGameweek)
+		}
+		return lib.Render(c, http.StatusOK, components.SubmitPreview(msg, cardHash))
+	}
+
+	return nil
+}
+
+func SubmitCard(c echo.Context) error {
+	cardHash := c.FormValue("submitHash")
+	log.Printf("Received card submission with hash: %s", cardHash)
+
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		log.Printf("Authentication failed: record=%v, ok=%v", record, ok)
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
+	}
+	log.Printf("Authenticated user: %s", record.Id)
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+	log.Println("Database connection established")
+
+	card, err := pb.Dao().FindFirstRecordByFilter(
+		"cards",
+		"cardHash = {:cardHash}",
+		dbx.Params{"cardHash": cardHash},
+	)
+	if err != nil {
+		log.Printf("Error finding card with hash %s: %v", cardHash, err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	}
+	log.Printf("Found card with hash: %s", cardHash)
+
+	card.Set("isCompleted", true)
+	if err := pb.Dao().SaveRecord(card); err != nil {
+		log.Printf("Error saving card with hash %s: %v", cardHash, err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to save card: %v", err))
+	}
+	log.Printf("Card with hash %s marked as completed", cardHash)
+
+	// Redirect to home page after submitting
+	log.Println("Redirecting to /app/profile")
+	return lib.HtmxRedirect(c, "/app/profile")
+}
