@@ -17,6 +17,9 @@ templ TeamCheck(teamID string, resp types.FPLUser) {
 						Manager: { resp.PlayerFirstName } { resp.PlayerLastName }
 					</p>
 				</div>
+				<div class="flex justify-center">
+					<span id="spinner" class="loading loading-dots loading-lg htmx-indicator"></span>
+				</div>
 				<div class="flex gap-4 justify-center">
 					<button
 						type="submit"
@@ -24,13 +27,13 @@ templ TeamCheck(teamID string, resp types.FPLUser) {
 						hx-post="/app/set_team_id"
 						hx-target="#team-confirm-form"
 						hx-swap="outerHTML"
-						hx
+						hx-indicator="#spinner"
 					>
 						Yes
 					</button>
 					<button
 						class="btn btn-ghost btn-outline"
-						hx-get="/"
+						hx-get="/app/redirect"
 					>
 						No
 					</button>

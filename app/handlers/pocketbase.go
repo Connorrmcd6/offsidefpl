@@ -123,7 +123,9 @@ func SetDefaultLeague(c echo.Context) error {
 	}
 
 	log.Printf("Successfully set default league: %s", leagueID)
+	lib.HtmxRedirect(c, "/app/profile")
 	return lib.Render(c, http.StatusOK, components.LeagueList(leagueRecords))
+
 }
 
 func updateDefaultLeague(c echo.Context, leagueID string) ([]types.UserLeagueSelection, bool, error) {

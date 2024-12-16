@@ -49,3 +49,7 @@ func ProfileGet(c echo.Context) error {
 
 	return lib.Render(c, StatusOK, views.Profile(record))
 }
+
+func Redirect(c echo.Context) error {
+	return lib.HtmxRedirect(c, "/app/profile")
+}

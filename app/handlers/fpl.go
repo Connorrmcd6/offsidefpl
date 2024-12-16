@@ -299,10 +299,10 @@ func SetTeamID(c echo.Context) error {
 		log.Printf("Error writing gameweek history: %v", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to write gameweek history")
 	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"message": "Team ID updated successfully",
-	})
+	return lib.HtmxRedirect(c, "/app/profile")
+	// return c.JSON(http.StatusOK, map[string]string{
+	// 	"message": "Team ID updated successfully",
+	// })
 }
 
 func getTeamGameweekHistory(c echo.Context, teamID int) ([]types.GameweekHistory, error) {
