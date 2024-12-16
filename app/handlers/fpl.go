@@ -254,6 +254,8 @@ func SetTeamID(c echo.Context) error {
 	log.Printf("Setting lastName to: %s for user: %s", lastName, record.Id)
 	record.Set("teamName", teamName)
 	log.Printf("Setting teamName to: %s for user: %s", teamName, record.Id)
+	record.Set("hasReverse", true)
+	log.Printf("Setting hasReverse to: %t for user: %s", true, record.Id)
 
 	// Save changes
 	if err := pb.Dao().SaveRecord(record); err != nil {

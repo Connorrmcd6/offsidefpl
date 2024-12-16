@@ -288,7 +288,7 @@ func InitialiseLeague(c echo.Context) error {
 	}
 
 	log.Printf("Successfully initialized league with ID: %s", leagueID)
-	return c.Redirect(303, "/app")
+	return lib.HtmxRedirect(c, "/app/profile")
 }
 
 const (
@@ -438,8 +438,9 @@ func GameweekWinnerGet(c echo.Context) error {
 			interfaceTeamIDs[i] = id
 		}
 
+		log.Printf("trying to find winner")
 		err = txDao.DB().
-			Select("p.gameweek", "u.firstName", "u.teamName", "p.points").
+			Select("p.gameweek", "u.firstName", "u.teamName", "p.points", "p.userID as winnerID").
 			From("aggregated_results p").
 			InnerJoin("users u", dbx.NewExp("p.teamID = u.teamID")).
 			Where(dbx.NewExp("p.gameweek = {:maxGW}", dbx.Params{"maxGW": gameweekNum})).
@@ -449,6 +450,7 @@ func GameweekWinnerGet(c echo.Context) error {
 			One(&winner)
 
 		if err != nil {
+			log.Print(err)
 			return fmt.Errorf("find winner: %w", err)
 		}
 
@@ -459,7 +461,15 @@ func GameweekWinnerGet(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
 	}
 
-	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName))
+	isWinner := false
+	authUserID := record.Get("id")
+	if winner.WinnerID == authUserID {
+		isWinner = true
+	}
+
+	log.Printf("Winner found: %v", winner)
+
+	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName, isWinner))
 }
 
 func UserCardsGet(c echo.Context) error {
@@ -759,10 +769,17 @@ func AdminVerifications(c echo.Context) error {
 			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
 			return fmt.Errorf("default league not found: %w", err)
 		}
-		// log.Printf("Default league found: %v", defaultLeague)
+		log.Printf("Default league found: %v", defaultLeague)
 
 		leagueID := defaultLeague.GetInt("leagueID")
 		log.Printf("Found league ID: %v", leagueID)
+
+		// Check if the authenticated user is the admin of the league
+		if record.Id != defaultLeague.GetString("adminUserID") {
+			log.Printf("User %s is not the admin of league %v", record.Id, leagueID)
+			return echo.NewHTTPError(http.StatusForbidden, "You are not authorized to view this page")
+		}
+		log.Printf("User %s is the admin of league %v", record.Id, leagueID)
 
 		err = txDao.DB().
 			Select(

@@ -327,6 +327,7 @@ type GameweekWinner struct {
 	FirstName string `db:"firstName"`
 	TeamName  string `db:"teamName"`
 	Points    int    `db:"points"`
+	WinnerID  string `db:"winnerID"`
 }
 
 type LeagueStandingRow struct {
