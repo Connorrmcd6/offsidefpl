@@ -10,9 +10,9 @@ templ FinesTable(cards []types.DatabaseCard) {
 	<div class="mb-4">
 		<p class="font-bold text-base-content">Cards</p>
 		<div class="w-72 flex items-center justify-center mb-2 join">
-			<button class="btn btn-outline btn-sm btn-primary join-item w-24">Submit</button>
-			<button class="btn btn-outline btn-sm btn-secondary join-item w-24">Nominate</button>
-			<button class="btn btn-outline btn-sm btn-accent join-item text-accent-content w-24">Rebound</button>
+			// <button class="btn btn-outline btn-sm btn-primary join-item w-24">Submit</button>
+			// <button class="btn btn-outline btn-sm btn-secondary join-item w-24">Nominate</button>
+			// <button class="btn btn-outline btn-sm btn-accent join-item text-accent-content w-24">Rebound</button>
 		</div>
 		if len(cards) == 0 {
 			<div role="alert" class="alert bg-neutral">
@@ -45,14 +45,45 @@ templ FinesTable(cards []types.DatabaseCard) {
 					</thead>
 					<tbody class="bg-base-100">
 						for _, card := range cards {
-							<tr>
-								<th>{ strconv.Itoa(card.Gameweek) }</th>
-								<td>
-									{ lib.ReplaceUnderscoresWithSpaces(card.Type) }
-								</td>
-								<td><button class="btn btn-xs btn-outline btn-primary">details</button></td>
-								<td><button class="btn btn-xs btn-outline btn-accent">submit</button></td>
-							</tr>
+							if card.IsCompleted && card.AdminVerified {
+								continue
+							} else if card.IsCompleted && !card.AdminVerified {
+								<tr class="bg-neutral">
+									<th>{ strconv.Itoa(card.Gameweek) }</th>
+									<td>
+										{ lib.ReplaceUnderscoresWithSpaces(card.Type) }
+									</td>
+									<td>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											class="h-6 w-6"
+											fill="none"
+											viewBox="0 0 24 24"
+											stroke="currentColor"
+										>
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+											></path>
+										</svg>
+									</td>
+								</tr>
+							} else {
+								<tr>
+									<th>{ strconv.Itoa(card.Gameweek) }</th>
+									<td>
+										{ lib.ReplaceUnderscoresWithSpaces(card.Type) }
+									</td>
+									if card.NominatorTeamID != 0 {
+										<td><button class="btn btn-xs btn-outline btn-primary">reverse</button></td>
+									} else {
+										<td><button class="btn  btn-xs btn-disabled" tabindex="-1" role="button" aria-disabled="true">reverse</button></td>
+									}
+									<td><button class="btn btn-xs btn-outline btn-accent">submit</button></td>
+								</tr>
+							}
 						}
 					</tbody>
 				</table>
@@ -60,3 +91,7 @@ templ FinesTable(cards []types.DatabaseCard) {
 		}
 	</div>
 }
+
+// <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+//   <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+// </svg>
