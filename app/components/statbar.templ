@@ -28,7 +28,7 @@ templ Statbar(gw int, manager, team string, isWinner bool) {
 		</div>
 		if isWinner {
 			<div class="join mb-5">
-				<button class="btn btn-secondary btn-outline  join-item">
+				<button class="btn btn-secondary btn-outline  join-item" onclick="singleNominate.showModal()" hx-get="/app/single_nomination" hx-target="#singleNominate">
 					Nominate
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -45,7 +45,7 @@ templ Statbar(gw int, manager, team string, isWinner bool) {
 						></path>
 					</svg>
 				</button>
-				<button class="btn btn-primary btn-outline join-item">
+				<button class="btn btn-primary btn-outline join-item" onclick="randomNominate.showModal()" hx-get="/app/random_nomination" hx-target="#randomNominate">
 					Spin the Wheel
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -67,4 +67,6 @@ templ Statbar(gw int, manager, team string, isWinner bool) {
 			<div></div>
 		}
 	</div>
+	<dialog id="singleNominate" class="modal"></dialog>
+	<dialog id="randomNominate" class="modal"></dialog>
 }

@@ -31,6 +31,9 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	appGroup.POST("/approval_preview", handlers.ApprovalPreview)
 	appGroup.POST("/approve", handlers.ApproveCard)
 	appGroup.GET("/redirect", handlers.Redirect)
+	appGroup.GET("/single_nomination", handlers.SingleNominationGet)
+	appGroup.GET("/random_nomination", handlers.RandomNominationGet)
+	appGroup.POST("/nominate_user", handlers.SingleNominationPost)
 	e.Router.GET("/", func(c echo.Context) error {
 		return c.Redirect(303, "/app")
 	})

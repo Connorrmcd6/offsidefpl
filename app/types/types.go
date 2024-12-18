@@ -353,3 +353,23 @@ type CardApprovals struct {
 	CardHash        string `db:"cardHash"`
 	Person          string `db:"person"`
 }
+
+type LeagueMembers struct {
+	UserName   string `db:"userName"`
+	LeagueID   int    `db:"leagueID"`
+	UserID     string `db:"userID"`
+	UserTeamID int    `db:"userTeamID"`
+}
+
+type CardNomination struct {
+	TeamID          int    `db:"teamID"`
+	UserID          string `db:"userID"`
+	NominatorTeamID int    `db:"nominatorTeamID"`
+	NominatorUserID string `db:"nominatorUserID"`
+	Gameweek        int    `db:"gameweek"`
+	IsCompleted     bool   `db:"isCompleted"`
+	AdminVerified   bool   `db:"adminVerified"`
+	Type            string `db:"type"`
+	LeagueID        int    `db:"leagueID"`
+	CardHash        string `db:"cardHash"`
+}
