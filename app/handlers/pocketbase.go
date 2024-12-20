@@ -389,6 +389,21 @@ func getMaxGameweek(txDao *daos.Dao) (int, error) {
 
 	return maxGameweek[0].Gameweek, nil
 }
+func getNominated(txDao *daos.Dao, gameweek int) (bool, error) {
+	records := []*models.Record{}
+
+	err := txDao.RecordQuery("cards").
+		AndWhere(dbx.HashExp{"gameweek": gameweek}).
+		AndWhere(dbx.NewExp("nominatorUserID != ''")).
+		AndWhere(dbx.NewExp("nominatorUserID IS NOT NULL")).
+		All(&records)
+
+	if err != nil {
+		return false, fmt.Errorf("failed to check nomination status: %w", err)
+	}
+
+	return len(records) > 0, nil
+}
 
 // GameweekWinnerGet returns the winner for the most recent gameweek
 func GameweekWinnerGet(c echo.Context) error {
@@ -406,6 +421,7 @@ func GameweekWinnerGet(c echo.Context) error {
 	}
 
 	var winner types.GameweekWinner
+	Nominated := false
 
 	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		teamID := record.Get("teamID")
@@ -454,6 +470,8 @@ func GameweekWinnerGet(c echo.Context) error {
 			return fmt.Errorf("find winner: %w", err)
 		}
 
+		Nominated, err = getNominated(txDao, gameweekNum)
+
 		return nil
 	})
 
@@ -469,7 +487,7 @@ func GameweekWinnerGet(c echo.Context) error {
 
 	log.Printf("Winner found: %v", winner)
 
-	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName, isWinner))
+	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName, isWinner, Nominated))
 }
 
 func UserCardsGet(c echo.Context) error {
