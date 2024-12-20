@@ -24,44 +24,28 @@ templ SingleNominate(members []types.LeagueMembers) {
 	</div>
 }
 
-// <dialog id="assignLicense" class="modal">
-// 	<div class="modal-box bg-base-100 w-96 p-10">
-// 		<h3 class="text-xl font-bold flex justify-center items-center text-base-content">Assignee Details</h3>
-// 		<div class="form-control flex justify-center items-center gap-3 mt-5">
-// 			<label class="input input-bordered flex items-center w-full">
-// 				<input name="firstName" class="assignDeets" type="text" placeholder="Name"/>
-// 			</label>
-// 			<label class="input input-bordered flex items-center w-full">
-// 				<input name="surname" class="assignDeets" type="text" placeholder="Surname"/>
-// 			</label>
-// 			<label class="input input-bordered flex items-center w-full">
-// 				<input name="email" class="assignDeets" type="text" placeholder="Email"/>
-// 			</label>
-// 			<label class="w-full">
-// 				<select name="company" class="select select-bordered w-full max-w-xs">
-// 					<option disabled selected>Company</option>
-// 					for _, company := range companies {
-// 						<option value={ strconv.Itoa(company.ID) }>{ company.Name }</option>
-// 					}
-// 				</select>
-// 			</label>
-// 		</div>
-// 		<div id="assign-valid"></div>
-// 		<div class="modal-action">
-// 			<form method="dialog">
-// 				<button class="btn btn-sm">Close</button>
-// 				<button class="btn btn-sm btn-primary create-license" hx-post="/assign" hx-target="#license-search-results" hx-swap="afterbegin" hx-include="[class='assignDeets'],[name='company']" hx-target-error="#assign-valid">Create</button>
-// 			</form>
-// 		</div>
-// 	</div>
-// </dialog>
-
-templ RandomNominate() {
+templ RandomNominate(NominatedUsers []types.LeagueMembers) {
 	<div class="modal-box">
 		<form method="dialog">
 			<button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
 		</form>
-		<h3 class="text-lg font-bold">random!</h3>
-		<p class="py-4">Press ESC key or click on ✕ button to close</p>
+		<h3 class="text-lg font-bold mb-5">Tap the tiles to reveal 3 random nominations</h3>
+		<div class="grid grid-flow-row gap-4 text-center px-10 mb-5">
+			for _, member := range NominatedUsers {
+				<div
+					class="bg-neutral rounded-box cursor-pointer transition-all duration-300 flex flex-col p-2"
+					onclick="this.classList.remove('bg-neutral'); this.classList.add('bg-accent'); this.querySelector('span').classList.remove('opacity-0');"
+					data-revealed="false"
+				>
+					<span name="selectedUser" value={ member.UserID } class=" selectedUser opacity-0 transition-opacity duration-300 text-accent-content">{ member.UserName }</span>
+				</div>
+			}
+		</div>
+		<div class="modal-action">
+			<form method="dialog">
+				<!-- if there is a button in form, it will close the modal -->
+				<button class="btn btn-sm btn-primary text-primary-content" hx-post="/app/random_nominate_submit" hx-include="[class='selectedUser']">Submit</button>
+			</form>
+		</div>
 	</div>
 }

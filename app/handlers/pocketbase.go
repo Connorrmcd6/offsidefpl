@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -1104,5 +1105,166 @@ func RandomNominationGet(c echo.Context) error {
 	}
 	log.Println("Database connection established")
 
-	return lib.Render(c, http.StatusOK, components.RandomNominate())
+	var members []types.LeagueMembers
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		teamID := record.Get("teamID")
+		if teamID == nil {
+			log.Printf("Invalid team ID: %v", teamID)
+			return fmt.Errorf("invalid team ID")
+		}
+		log.Printf("Processing league standings for teamID: %v", teamID)
+
+		defaultLeague, err := getDefaultLeague(txDao, teamID)
+		if err != nil {
+			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
+			return fmt.Errorf("default league not found: %w", err)
+		}
+		log.Printf("Default league found: %v", defaultLeague)
+
+		leagueID := defaultLeague.GetInt("leagueID")
+		log.Printf("Found league ID: %v", leagueID)
+
+		err = txDao.DB().
+			Select(
+				"concat(U.firstName, ' ', U.lastName) as userName",
+				"l.leagueID",
+				"l.userID",
+				"l.teamID as userTeamID").
+			From("leagues l").
+			LeftJoin("users U", dbx.NewExp("l.userID = U.ID")).
+			Where(dbx.NewExp("leagueID= {:leagueID}", dbx.Params{"leagueID": leagueID})).
+			OrderBy("userName asc").
+			All(&members)
+
+		if err != nil {
+			log.Printf("League standings query failed: teamID=%v, leagueID=%v, error=%v", teamID, leagueID, err)
+			return fmt.Errorf("fetch standings: %w", err)
+		}
+		log.Printf("League standings fetched successfully for leagueID: %v", leagueID)
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Transaction failed: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	}
+
+	log.Println("Rendering dropdown")
+
+	finalMembers := getRandomMembers(members, 3)
+
+	return lib.Render(c, http.StatusOK, components.RandomNominate(finalMembers))
+}
+
+func getRandomMembers(members []types.LeagueMembers, count int) []types.LeagueMembers {
+
+	// Create copy of slice to shuffle
+	shuffled := make([]types.LeagueMembers, len(members))
+	copy(shuffled, members)
+
+	// Fisher-Yates shuffle
+	for i := len(shuffled) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	}
+
+	// Return first 'count' elements or all if less than count
+	if len(shuffled) < count {
+		return shuffled
+	}
+	return shuffled[:count]
+}
+
+func RandomNominationPost(c echo.Context) error {
+	log.Println("[SINGLE NOMINATION FUNCTION STARTING]")
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		log.Printf("Authentication failed: record=%v, ok=%v", record, ok)
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
+	}
+	log.Printf("Authenticated user: %s", record.Id)
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+	log.Println("Database connection established")
+
+	selectedUserID := c.FormValue("selectedUser")
+	log.Printf("Selected user ID: %s", selectedUserID)
+
+	// err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+	// 	teamID := record.GetInt("teamID")
+	// 	nominatorUserID := record.GetString("id")
+	// 	log.Printf("Nominator user ID: %s", nominatorUserID)
+	// 	log.Printf("Team ID: %d", teamID)
+
+	// 	if teamID == 0 {
+	// 		log.Printf("Invalid team ID: %v", teamID)
+	// 		return fmt.Errorf("invalid team ID")
+	// 	}
+	// 	log.Printf("Processing nomination for teamID: %v", teamID)
+
+	// 	defaultLeague, err := getDefaultLeague(txDao, teamID)
+	// 	if err != nil {
+	// 		log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
+	// 		return fmt.Errorf("default league not found: %w", err)
+	// 	}
+
+	// 	leagueID := defaultLeague.GetInt("leagueID")
+	// 	log.Printf("Found league ID: %v", leagueID)
+
+	// 	gameweekNum, err := getMaxGameweek(txDao)
+	// 	if err != nil {
+	// 		log.Printf("Failed to get max gameweek: %v", err)
+	// 		return err
+	// 	}
+	// 	log.Printf("Using gameweek: %d", gameweekNum)
+
+	// 	cardHash := fmt.Sprintf("%s_%d_%d_%s_%d", selectedUserID, leagueID, gameweekNum, "nomination", 0)
+
+	// 	nomineeRecord, err := txDao.FindFirstRecordByFilter(
+	// 		"users",
+	// 		"id = {:userID}",
+	// 		dbx.Params{"userID": selectedUserID},
+	// 	)
+	// 	if err != nil {
+	// 		log.Printf("Failed to find nominee user: %v", err)
+	// 		return fmt.Errorf("fetch user: %w", err)
+	// 	}
+
+	// 	nomineeTeamID := nomineeRecord.GetInt("teamID")
+	// 	collection, err := pb.Dao().FindCollectionByNameOrId("cards")
+	// 	if err != nil {
+	// 		log.Printf("Failed to find cards collection: %v", err)
+	// 		return err
+	// 	}
+
+	// 	card := models.NewRecord(collection)
+
+	// 	card.Set("teamID", nomineeTeamID)
+	// 	card.Set("userID", selectedUserID)
+	// 	card.Set("nominatorTeamID", teamID)
+	// 	card.Set("nominatorUserID", nominatorUserID)
+	// 	card.Set("gameweek", gameweekNum)
+	// 	card.Set("type", "nomination")
+	// 	card.Set("leagueID", leagueID)
+	// 	card.Set("cardHash", cardHash)
+
+	// 	err = txDao.SaveRecord(card)
+	// 	if err != nil {
+	// 		log.Printf("Failed to save nomination card: %v", err)
+	// 		return fmt.Errorf("save nomination: %w", err)
+	// 	}
+	// 	log.Printf("Successfully created nomination card with hash: %s", cardHash)
+	// 	return nil
+	// })
+
+	// if err != nil {
+	// 	log.Printf("Transaction failed: %v", err)
+	// 	return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	// }
+	return nil
+	// return lib.HtmxRedirect(c, "/app/profile")
 }
