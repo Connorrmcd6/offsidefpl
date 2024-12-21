@@ -1,6 +1,9 @@
 package components
 
-import "github.com/cmcd97/bytesize/app/types"
+import (
+	"github.com/cmcd97/bytesize/app/types"
+	"strconv"
+)
 
 templ SingleNominate(members []types.LeagueMembers) {
 	<div class="modal-box">
@@ -31,13 +34,14 @@ templ RandomNominate(NominatedUsers []types.LeagueMembers) {
 		</form>
 		<h3 class="text-lg font-bold mb-5">Tap the tiles to reveal 3 random nominations</h3>
 		<div class="grid grid-flow-row gap-4 text-center px-10 mb-5">
-			for _, member := range NominatedUsers {
+			for i, member := range NominatedUsers {
 				<div
 					class="bg-neutral rounded-box cursor-pointer transition-all duration-300 flex flex-col p-2"
 					onclick="this.classList.remove('bg-neutral'); this.classList.add('bg-accent'); this.querySelector('span').classList.remove('opacity-0');"
 					data-revealed="false"
 				>
-					<span name="selectedUser" value={ member.UserID } class=" selectedUser opacity-0 transition-opacity duration-300 text-accent-content">{ member.UserName }</span>
+					<span name="selectedUser" value={ member.UserID } class="opacity-0 transition-opacity duration-300 text-accent-content">{ member.UserName }</span>
+					<input class="selectedUser" type="hidden" name={ "selectedUser" + strconv.Itoa(i) } value={ member.UserID }/>
 				</div>
 			}
 		</div>

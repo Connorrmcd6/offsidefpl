@@ -3,10 +3,12 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -390,21 +392,22 @@ func getMaxGameweek(txDao *daos.Dao) (int, error) {
 
 	return maxGameweek[0].Gameweek, nil
 }
-func getNominated(txDao *daos.Dao, gameweek int) (bool, error) {
-	records := []*models.Record{}
 
-	err := txDao.RecordQuery("cards").
-		AndWhere(dbx.HashExp{"gameweek": gameweek}).
-		AndWhere(dbx.NewExp("nominatorUserID != ''")).
-		AndWhere(dbx.NewExp("nominatorUserID IS NOT NULL")).
-		All(&records)
+// func getNominated(txDao *daos.Dao, gameweek int) (bool, error) {
+// 	records := []*models.Record{}
 
-	if err != nil {
-		return false, fmt.Errorf("failed to check nomination status: %w", err)
-	}
+// 	err := txDao.RecordQuery("cards").
+// 		AndWhere(dbx.HashExp{"gameweek": gameweek}).
+// 		AndWhere(dbx.NewExp("nominatorUserID != ''")).
+// 		AndWhere(dbx.NewExp("nominatorUserID IS NOT NULL")).
+// 		All(&records)
 
-	return len(records) > 0, nil
-}
+// 	if err != nil {
+// 		return false, fmt.Errorf("failed to check nomination status: %w", err)
+// 	}
+
+// 	return len(records) > 0, nil
+// }
 
 // GameweekWinnerGet returns the winner for the most recent gameweek
 func GameweekWinnerGet(c echo.Context) error {
@@ -470,8 +473,6 @@ func GameweekWinnerGet(c echo.Context) error {
 			log.Print(err)
 			return fmt.Errorf("find winner: %w", err)
 		}
-
-		Nominated, err = getNominated(txDao, gameweekNum)
 
 		return nil
 	})
@@ -1151,12 +1152,26 @@ func RandomNominationGet(c echo.Context) error {
 
 	log.Println("Rendering dropdown")
 
-	finalMembers := getRandomMembers(members, 3)
+	finalMembers := getRandomMembers(c, members, 3)
 
 	return lib.Render(c, http.StatusOK, components.RandomNominate(finalMembers))
 }
 
-func getRandomMembers(members []types.LeagueMembers, count int) []types.LeagueMembers {
+const (
+	randomMembersCookie = "random_members"
+	cookieExpiration    = 12 * time.Hour
+)
+
+func getRandomMembers(c echo.Context, members []types.LeagueMembers, count int) []types.LeagueMembers {
+	// Try to get existing members from cookie
+	if cookie, err := c.Cookie(randomMembersCookie); err == nil {
+		decodedValue, _ := url.QueryUnescape(cookie.Value)
+		var cookieMembers []types.LeagueMembers
+		if err := json.Unmarshal([]byte(decodedValue), &cookieMembers); err == nil && len(cookieMembers) > 0 {
+			log.Printf("Using %d members from cookie", len(cookieMembers))
+			return cookieMembers
+		}
+	}
 
 	// Create copy of slice to shuffle
 	shuffled := make([]types.LeagueMembers, len(members))
@@ -1168,11 +1183,30 @@ func getRandomMembers(members []types.LeagueMembers, count int) []types.LeagueMe
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 	}
 
-	// Return first 'count' elements or all if less than count
+	// Get final members
+	var finalMembers []types.LeagueMembers
 	if len(shuffled) < count {
-		return shuffled
+		finalMembers = shuffled
+	} else {
+		finalMembers = shuffled[:count]
 	}
-	return shuffled[:count]
+
+	// Store in cookie
+	if memberJSON, err := json.Marshal(finalMembers); err == nil {
+		encodedValue := url.QueryEscape(string(memberJSON))
+		cookie := &http.Cookie{
+			Name:     randomMembersCookie,
+			Value:    encodedValue,
+			Expires:  time.Now().Add(cookieExpiration),
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		}
+		c.SetCookie(cookie)
+		log.Printf("Stored new cookie with %d members", len(finalMembers))
+	}
+
+	return finalMembers
 }
 
 func RandomNominationPost(c echo.Context) error {
@@ -1191,80 +1225,90 @@ func RandomNominationPost(c echo.Context) error {
 	}
 	log.Println("Database connection established")
 
-	selectedUserID := c.FormValue("selectedUser")
-	log.Printf("Selected user ID: %s", selectedUserID)
+	selectedUsers := []string{
+		c.FormValue("selectedUser0"),
+		c.FormValue("selectedUser1"),
+		c.FormValue("selectedUser2"),
+	}
 
-	// err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
-	// 	teamID := record.GetInt("teamID")
-	// 	nominatorUserID := record.GetString("id")
-	// 	log.Printf("Nominator user ID: %s", nominatorUserID)
-	// 	log.Printf("Team ID: %d", teamID)
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		teamID := record.GetInt("teamID")
+		nominatorUserID := record.GetString("id")
+		log.Printf("Nominator user ID: %s", nominatorUserID)
+		log.Printf("Team ID: %d", teamID)
 
-	// 	if teamID == 0 {
-	// 		log.Printf("Invalid team ID: %v", teamID)
-	// 		return fmt.Errorf("invalid team ID")
-	// 	}
-	// 	log.Printf("Processing nomination for teamID: %v", teamID)
+		if teamID == 0 {
+			log.Printf("Invalid team ID: %v", teamID)
+			return fmt.Errorf("invalid team ID")
+		}
+		log.Printf("Processing nomination for teamID: %v", teamID)
 
-	// 	defaultLeague, err := getDefaultLeague(txDao, teamID)
-	// 	if err != nil {
-	// 		log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
-	// 		return fmt.Errorf("default league not found: %w", err)
-	// 	}
+		defaultLeague, err := getDefaultLeague(txDao, teamID)
+		if err != nil {
+			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
+			return fmt.Errorf("default league not found: %w", err)
+		}
 
-	// 	leagueID := defaultLeague.GetInt("leagueID")
-	// 	log.Printf("Found league ID: %v", leagueID)
+		leagueID := defaultLeague.GetInt("leagueID")
+		log.Printf("Found league ID: %v", leagueID)
 
-	// 	gameweekNum, err := getMaxGameweek(txDao)
-	// 	if err != nil {
-	// 		log.Printf("Failed to get max gameweek: %v", err)
-	// 		return err
-	// 	}
-	// 	log.Printf("Using gameweek: %d", gameweekNum)
+		gameweekNum, err := getMaxGameweek(txDao)
+		if err != nil {
+			log.Printf("Failed to get max gameweek: %v", err)
+			return err
+		}
+		log.Printf("Using gameweek: %d", gameweekNum)
 
-	// 	cardHash := fmt.Sprintf("%s_%d_%d_%s_%d", selectedUserID, leagueID, gameweekNum, "nomination", 0)
+		collection, err := pb.Dao().FindCollectionByNameOrId("cards")
+		if err != nil {
+			return fmt.Errorf("find collection: %w", err)
+		}
 
-	// 	nomineeRecord, err := txDao.FindFirstRecordByFilter(
-	// 		"users",
-	// 		"id = {:userID}",
-	// 		dbx.Params{"userID": selectedUserID},
-	// 	)
-	// 	if err != nil {
-	// 		log.Printf("Failed to find nominee user: %v", err)
-	// 		return fmt.Errorf("fetch user: %w", err)
-	// 	}
+		for i, selectedUserID := range selectedUsers {
+			if selectedUserID == "" {
+				continue
+			}
 
-	// 	nomineeTeamID := nomineeRecord.GetInt("teamID")
-	// 	collection, err := pb.Dao().FindCollectionByNameOrId("cards")
-	// 	if err != nil {
-	// 		log.Printf("Failed to find cards collection: %v", err)
-	// 		return err
-	// 	}
+			err := createNominationCard(txDao, collection, selectedUserID, teamID, nominatorUserID, leagueID, gameweekNum, i)
+			if err != nil {
+				return fmt.Errorf("create nomination %d: %w", i, err)
+			}
+			log.Printf("Created nomination %d for user %s", i, selectedUserID)
+		}
 
-	// 	card := models.NewRecord(collection)
+		return nil
+	})
 
-	// 	card.Set("teamID", nomineeTeamID)
-	// 	card.Set("userID", selectedUserID)
-	// 	card.Set("nominatorTeamID", teamID)
-	// 	card.Set("nominatorUserID", nominatorUserID)
-	// 	card.Set("gameweek", gameweekNum)
-	// 	card.Set("type", "nomination")
-	// 	card.Set("leagueID", leagueID)
-	// 	card.Set("cardHash", cardHash)
+	if err != nil {
+		log.Printf("Transaction failed: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process nominations: %v", err))
+	}
 
-	// 	err = txDao.SaveRecord(card)
-	// 	if err != nil {
-	// 		log.Printf("Failed to save nomination card: %v", err)
-	// 		return fmt.Errorf("save nomination: %w", err)
-	// 	}
-	// 	log.Printf("Successfully created nomination card with hash: %s", cardHash)
-	// 	return nil
-	// })
+	return lib.HtmxRedirect(c, "/app/profile")
+}
 
-	// if err != nil {
-	// 	log.Printf("Transaction failed: %v", err)
-	// 	return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
-	// }
-	return nil
-	// return lib.HtmxRedirect(c, "/app/profile")
+func createNominationCard(txDao *daos.Dao, collection *models.Collection, nomineeID string, teamID int, nominatorUserID string, leagueID int, gameweekNum int, index int) error {
+	nomineeRecord, err := txDao.FindFirstRecordByFilter(
+		"users",
+		"id = {:userID}",
+		dbx.Params{"userID": nomineeID},
+	)
+	if err != nil {
+		return fmt.Errorf("fetch user: %w", err)
+	}
+
+	nomineeTeamID := nomineeRecord.GetInt("teamID")
+	cardHash := fmt.Sprintf("%s_%d_%d_%s_%d", nomineeID, leagueID, gameweekNum, "nomination", index)
+
+	card := models.NewRecord(collection)
+	card.Set("teamID", nomineeTeamID)
+	card.Set("userID", nomineeID)
+	card.Set("nominatorTeamID", teamID)
+	card.Set("nominatorUserID", nominatorUserID)
+	card.Set("gameweek", gameweekNum)
+	card.Set("type", "nomination")
+	card.Set("leagueID", leagueID)
+	card.Set("cardHash", cardHash)
+
+	return txDao.SaveRecord(card)
 }
