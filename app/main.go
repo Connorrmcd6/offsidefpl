@@ -12,7 +12,7 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	appGroup := e.Router.Group("/app", middleware.LoadAuthContextFromCookie(pb), middleware.AuthGuard)
 
 	appGroup.GET("", func(c echo.Context) error {
-		return c.Redirect(303, "/app")
+		return c.Redirect(303, "/app/profile")
 	})
 	appGroup.GET("/profile", handlers.ProfileGet)
 	appGroup.GET("/fpl_team_id", handlers.FetchFplTeam)
@@ -36,6 +36,6 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	appGroup.POST("/nominate_user", handlers.SingleNominationPost)
 	appGroup.POST("/random_nominate_submit", handlers.RandomNominationPost)
 	e.Router.GET("/", func(c echo.Context) error {
-		return c.Redirect(303, "/app")
+		return c.Redirect(303, "/app/profile")
 	})
 }

@@ -8,7 +8,7 @@ run: build
 	@./bin/app serve
 
 build:
-	@go build -o bin/app .
+	@GOOS=linux GOARCH=arm64 go build -o bin/app .
 
 css:
 	tailwindcss -i app/css/app.css -o public/styles.css --watch   
