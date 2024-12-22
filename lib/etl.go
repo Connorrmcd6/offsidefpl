@@ -1068,35 +1068,44 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 
 	var aggregatedResults []types.AggregatedResults
 	query := fmt.Sprintf(`
-    WITH new_results AS (
-        SELECT 
-            gameweek, 
-            teamID, 
-            userID,
-            CASE 
-                WHEN userID IN (%s) AND gameweek = (
-                    SELECT MAX(gameweek) 
-                    FROM cards 
-                    WHERE adminVerified = FALSE 
-                    AND userID = results.userID
-                ) THEN 0
-                ELSE points
-            END as points,
-            SUM(points - (hits * 4)) OVER (
-                PARTITION BY userID 
-                ORDER BY gameweek
-                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-            ) as totalPoints
-        FROM results 
-        GROUP BY gameweek, teamID, userID, points, hits
-    )
-    SELECT nr.*
-    FROM new_results nr
-    LEFT JOIN aggregated_results ra 
-        ON nr.gameweek = ra.gameweek 
-        AND nr.userID = ra.userID
-    WHERE ra.id IS NULL
-    ORDER BY nr.userID, nr.gameweek
+WITH adjusted_points AS (
+    SELECT 
+        gameweek, 
+        teamID, 
+        userID,
+        CASE 
+            WHEN userID IN (%s) AND gameweek = (
+                SELECT MAX(gameweek) 
+                FROM cards 
+                WHERE adminVerified = FALSE 
+                AND userID = results.userID
+            ) THEN 0
+            ELSE points
+        END as adjusted_points,
+        hits
+    FROM results
+),
+new_results AS (
+    SELECT 
+        gameweek, 
+        teamID, 
+        userID,
+        adjusted_points as points,
+        SUM(adjusted_points - (hits * 4)) OVER (
+            PARTITION BY userID 
+            ORDER BY gameweek
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) as totalPoints
+    FROM adjusted_points 
+    GROUP BY gameweek, teamID, userID, adjusted_points, hits
+)
+SELECT nr.*
+FROM new_results nr
+LEFT JOIN aggregated_results ra 
+    ON nr.gameweek = ra.gameweek 
+    AND nr.userID = ra.userID
+WHERE ra.id IS NULL
+ORDER BY nr.userID, nr.gameweek
 `, penalizedUsersStr)
 
 	err = pb.Dao().DB().NewQuery(query).All(&aggregatedResults)
