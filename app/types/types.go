@@ -373,3 +373,13 @@ type CardNomination struct {
 	LeagueID        int    `db:"leagueID"`
 	CardHash        string `db:"cardHash"`
 }
+
+type GameweekStatusResponse struct {
+	Events []StatusEvent `json:"events"`
+}
+
+type StatusEvent struct {
+	ID          int  `json:"id"`
+	Finished    bool `json:"finished"`
+	DataChecked bool `json:"data_checked"`
+}

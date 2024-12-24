@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -393,21 +394,82 @@ func getMaxGameweek(txDao *daos.Dao) (int, error) {
 	return maxGameweek[0].Gameweek, nil
 }
 
-// func getNominated(txDao *daos.Dao, gameweek int) (bool, error) {
-// 	records := []*models.Record{}
+func getNominated(txDao *daos.Dao, gameweek int) (bool, error) {
+	records := []*models.Record{}
 
-// 	err := txDao.RecordQuery("cards").
-// 		AndWhere(dbx.HashExp{"gameweek": gameweek}).
-// 		AndWhere(dbx.NewExp("nominatorUserID != ''")).
-// 		AndWhere(dbx.NewExp("nominatorUserID IS NOT NULL")).
-// 		All(&records)
+	err := txDao.RecordQuery("cards").
+		AndWhere(dbx.HashExp{"gameweek": gameweek}).
+		AndWhere(dbx.NewExp("nominatorUserID != ''")).
+		AndWhere(dbx.NewExp("nominatorUserID IS NOT NULL")).
+		All(&records)
 
-// 	if err != nil {
-// 		return false, fmt.Errorf("failed to check nomination status: %w", err)
-// 	}
+	if err != nil {
+		return false, fmt.Errorf("failed to check nomination status: %w", err)
+	}
 
-// 	return len(records) > 0, nil
-// }
+	return len(records) > 0, nil
+}
+
+func getFinished(c echo.Context, gameweek int) (bool, error) {
+	// Check for existing cookie
+	cookie, err := c.Cookie(fmt.Sprintf("gw_%d_finished", gameweek))
+	if err == nil && cookie.Value == "true" {
+		log.Printf("[INFO] Found valid cookie for gameweek %d", gameweek)
+		return true, nil
+	}
+
+	log.Printf("[INFO] Checking data availability for gameweek %d", gameweek)
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	endpoint := "https://fantasy.premierleague.com/api/bootstrap-static/"
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		log.Printf("[ERROR] API request failed: %v", err)
+		return false, echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch league status: %v", err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[HourlyDataCheck] Unexpected status code: %d", resp.StatusCode)
+		return false, echo.NewHTTPError(http.StatusInternalServerError, "unexpected status code from API")
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[HourlyDataCheck] Failed to read response: %v", err)
+		return false, echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
+	}
+
+	var response types.GameweekStatusResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Printf("[HourlyDataCheck] Failed to parse response: %v", err)
+		return false, echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse league status data: %v", err))
+	}
+
+	if len(response.Events) == 0 {
+		log.Println("[HourlyDataCheck] No status data received")
+		return false, echo.NewHTTPError(http.StatusInternalServerError, "no status data received")
+	}
+
+	for _, event := range response.Events {
+		if event.ID == gameweek && event.Finished && event.DataChecked {
+			// Set cookie for 24 hours
+			cookie := new(http.Cookie)
+			cookie.Name = fmt.Sprintf("gw_%d_finished", gameweek)
+			cookie.Value = "true"
+			cookie.Expires = time.Now().Add(24 * time.Hour)
+			cookie.Path = "/"
+			c.SetCookie(cookie)
+
+			log.Printf("[INFO] Gameweek %d finished, cookie set", gameweek)
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 // GameweekWinnerGet returns the winner for the most recent gameweek
 func GameweekWinnerGet(c echo.Context) error {
@@ -426,6 +488,7 @@ func GameweekWinnerGet(c echo.Context) error {
 
 	var winner types.GameweekWinner
 	Nominated := false
+	Finished := false
 
 	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		teamID := record.Get("teamID")
@@ -474,6 +537,16 @@ func GameweekWinnerGet(c echo.Context) error {
 			return fmt.Errorf("find winner: %w", err)
 		}
 
+		Nominated, err = getNominated(txDao, gameweekNum)
+		if err != nil {
+			log.Print(err)
+		}
+
+		Finished, err = getFinished(c, gameweekNum)
+		if err != nil {
+			log.Print(err)
+		}
+
 		return nil
 	})
 
@@ -489,7 +562,7 @@ func GameweekWinnerGet(c echo.Context) error {
 
 	log.Printf("Winner found: %v", winner)
 
-	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName, isWinner, Nominated))
+	return lib.Render(c, http.StatusOK, components.Statbar(winner.Gameweek, winner.FirstName, winner.TeamName, isWinner, Nominated, Finished))
 }
 
 func UserCardsGet(c echo.Context) error {
