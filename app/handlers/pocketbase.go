@@ -581,7 +581,7 @@ func UserCardsGet(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
 	}
 
-	var cards []types.DatabaseCard
+	var cards []types.TableCard
 
 	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		teamID := record.Get("teamID")
@@ -613,10 +613,11 @@ func UserCardsGet(c echo.Context) error {
 		log.Printf("Found %d teams in league", len(teamIDs))
 
 		err = txDao.DB().
-			Select("cards.*").
+			Select("cards.*", "users.hasReverse as userHasReverse").
 			From("cards").
-			Where(dbx.NewExp("teamID = {:team_id} AND leagueID = {:league_id}", dbx.Params{"team_id": teamID, "league_id": leagueID})).
+			Where(dbx.NewExp("cards.teamID = {:team_id} AND cards.leagueID = {:league_id}", dbx.Params{"team_id": teamID, "league_id": leagueID})).
 			AndWhere(dbx.NewExp("adminVerified = FALSE")).
+			LeftJoin("users", dbx.NewExp("cards.userID = users.id")).
 			OrderBy("gameweek asc").
 			All(&cards)
 
@@ -771,9 +772,9 @@ func CardSubmitPreview(c echo.Context) error {
 
 		var msg string
 		if cardType == "nomination" {
-			msg = fmt.Sprintf("a nomination by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
+			msg = fmt.Sprintf("Nomination by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
 		} else if cardType == "reverse" {
-			msg = fmt.Sprintf("an uno reverse by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
+			msg = fmt.Sprintf("Reverse by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
 		}
 
 		return lib.Render(c, http.StatusOK, components.SubmitPreview(msg, cardHash))
@@ -830,6 +831,117 @@ func SubmitCard(c echo.Context) error {
 
 	// Redirect to home page after submitting
 	log.Println("Redirecting to /app/profile")
+	return lib.HtmxRedirect(c, "/app/profile")
+}
+
+func CardReversePreview(c echo.Context) error {
+	cardHash := c.FormValue("cardHash")
+
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		log.Printf("Authentication failed: record=%v, ok=%v", record, ok)
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
+	}
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+
+	card, err := pb.Dao().FindFirstRecordByFilter(
+		"cards",
+		"cardHash = {:cardHash}",
+		dbx.Params{"cardHash": cardHash},
+	)
+	// log.Print("card: %v", card)
+
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	}
+
+	nominatorTeamID := card.GetInt("nominatorTeamID")
+	cardGameweek := card.GetInt("gameweek")
+	cardType := card.Get("type")
+
+	if nominatorTeamID != 0 {
+		nominator, err := pb.Dao().FindFirstRecordByFilter(
+			"users",
+			"teamID = {:teamID}",
+			dbx.Params{"teamID": nominatorTeamID},
+		)
+		if err != nil {
+			log.Printf("query failed: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+		}
+
+		var msg string
+		if cardType == "nomination" {
+			msg = fmt.Sprintf("Nomination by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
+		}
+		return lib.Render(c, http.StatusOK, components.ReversePreview(msg, cardHash))
+	}
+
+	return nil
+}
+
+func ReverseCard(c echo.Context) error {
+	cardHash := c.FormValue("submitHash")
+	log.Printf("Received card submission with hash: %s", cardHash)
+
+	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+	if !ok || record == nil {
+		log.Printf("Authentication failed: record=%v, ok=%v", record, ok)
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
+	}
+	log.Printf("Authenticated user: %s", record.Id)
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+	log.Println("Database connection established")
+
+	card, err := pb.Dao().FindFirstRecordByFilter(
+		"cards",
+		"cardHash = {:cardHash}",
+		dbx.Params{"cardHash": cardHash},
+	)
+	if err != nil {
+		log.Printf("Error finding card with hash %s: %v", cardHash, err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+	}
+	log.Printf("Found card with hash: %s", cardHash)
+
+	origUserID := card.Get("userID")
+	origTeamID := card.Get("teamID")
+	origNominatorUserID := card.Get("nominatorUserID")
+	origNominatorTeamID := card.Get("nominatorTeamID")
+
+	// Perform the swap
+	card.Set("userID", origNominatorUserID)
+	card.Set("teamID", origNominatorTeamID)
+	card.Set("nominatorUserID", origUserID)
+	card.Set("nominatorTeamID", origTeamID)
+	card.Set("type", "reverse")
+	record.Set("hasReverse", false)
+
+	log.Printf("Swapping card ownership - Original user/team: %s/%v to nominator user/team: %s/%v",
+		origUserID, origTeamID, origNominatorUserID, origNominatorTeamID)
+
+	if err := pb.Dao().SaveRecord(card); err != nil {
+		log.Printf("Error saving reversed card with hash %s: %v", cardHash, err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to save card: %v", err))
+	}
+
+	if err := pb.Dao().SaveRecord(record); err != nil {
+		log.Printf("Error toggling reverse %s: %v", cardHash, err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to save card: %v", err))
+	}
+	log.Printf("Card with hash %s successfully reversed", cardHash)
+
 	return lib.HtmxRedirect(c, "/app/profile")
 }
 

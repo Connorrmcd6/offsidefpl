@@ -1,17 +1,17 @@
 package components
 
-templ SubmitPreview(msg, cardHash string) {
+templ ReversePreview(msg, cardHash string) {
 	<div class="modal-box">
 		<form method="dialog">
 			<button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
 		</form>
-		<h3 class="text-lg font-bold">Are you sure you want to <span class="font-bold text-accent">submit</span> this card?</h3>
+		<h3 class="text-lg font-bold">Are you sure you want to <span class="font-bold text-accent">reverse</span> this card?</h3>
 		<p class="py-4">{ msg }</p>
 		<div class="modal-action">
 			<form method="dialog">
 				<!-- if there is a button in form, it will close the modal -->
 				<button class="btn btn-sm">No</button>
-				<button class="btn btn-sm btn-primary" hx-post="/app/submit" value={ cardHash } name="submitHash">Yes</button>
+				<button class="btn btn-sm btn-primary" hx-post="/app/reverse" value={ cardHash } name="submitHash">Yes</button>
 			</form>
 		</div>
 	</div>

@@ -44,6 +44,8 @@ func main() {
 		lib.GetAllFixtureEvents(e, pb)
 		lib.GetAllFixtures(e, pb)
 
+		// lib.ManualDataCheck(e, pb)
+
 		c := cron.New()
 		c.MustAdd("Weekly Fixture Update Check", "0 10 * * 2", func() {
 			lib.CheckForFixtureUpdates(e, pb)

@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-templ FinesTable(cards []types.DatabaseCard) {
+templ FinesTable(cards []types.TableCard) {
 	<div class="mb-4">
 		<p class="font-bold text-base-content">Cards</p>
 		<div class="w-72 flex items-center justify-center mb-2 join">
@@ -94,8 +94,8 @@ templ FinesTable(cards []types.DatabaseCard) {
 									<td>
 										{ lib.ReplaceUnderscoresWithSpaces(card.Type) }
 									</td>
-									if card.NominatorTeamID != 0 && card.Type != "reverse" {
-										<td><button class="btn btn-xs btn-outline btn-primary">reverse</button></td>
+									if card.NominatorTeamID != 0 && card.Type != "reverse" && card.UserHasReverse {
+										<td><button class="btn btn-xs btn-outline btn-primary" onclick="reverseModal.showModal()" value={ card.Type } hx-post="/app/reverse_preview" hx-target="#reverseModal" name="cardHash">reverse</button></td>
 									} else {
 										<td><button class="btn  btn-xs btn-disabled" tabindex="-1" role="button" aria-disabled="true">reverse</button></td>
 									}
@@ -109,4 +109,5 @@ templ FinesTable(cards []types.DatabaseCard) {
 		}
 	</div>
 	<dialog id="submissionModal" class="modal"></dialog>
+	<dialog id="reverseModal" class="modal"></dialog>
 }

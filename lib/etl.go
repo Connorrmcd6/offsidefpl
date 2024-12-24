@@ -126,6 +126,73 @@ func hourlyDataCheck(pb *pocketbase.PocketBase, c *cron.Cron) error {
 	return nil
 }
 
+func ManualDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+	log.Println("[HourlyDataCheck] Starting hourly data availability check")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	endpoint := "https://fantasy.premierleague.com/api/event-status/"
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		log.Printf("[HourlyDataCheck] API request failed: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch league status: %v", err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[HourlyDataCheck] Unexpected status code: %d", resp.StatusCode)
+		return echo.NewHTTPError(http.StatusInternalServerError, "unexpected status code from API")
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[HourlyDataCheck] Failed to read response: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to read response: %v", err))
+	}
+
+	var response types.FixtureUpdateStatus
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Printf("[HourlyDataCheck] Failed to parse response: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to parse league status data: %v", err))
+	}
+
+	if len(response.Status) == 0 {
+		log.Println("[HourlyDataCheck] No status data received")
+		return echo.NewHTTPError(http.StatusInternalServerError, "no status data received")
+	}
+
+	if response.Leagues == "Updated" {
+		gameweek := response.Status[0].Event
+		err := checkForEventsUpdate(pb)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update events: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update events: %v", err))
+		}
+		err = updateGameweekResults(pb, gameweek)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update results: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update results: %v", err))
+		}
+		err = updateCards(pb)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update cards: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update cards: %v", err))
+		}
+		// updated results aggregated
+		err = updateResultsAggregated(pb)
+		if err != nil {
+			log.Printf("[HourlyDataCheck] Failed to update results aggregated: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to update results aggregated: %v", err))
+		}
+
+		return nil
+	}
+
+	return nil
+}
+
 func roundUpToNextDay(dateStr string) (time.Time, error) {
 	// Parse the input date
 	if dateStr == "" {
