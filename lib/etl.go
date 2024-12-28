@@ -126,7 +126,7 @@ func hourlyDataCheck(pb *pocketbase.PocketBase, c *cron.Cron) error {
 	return nil
 }
 
-func ManualDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
+func ManualDataCheck(pb *pocketbase.PocketBase) error {
 	log.Println("[HourlyDataCheck] Starting hourly data availability check")
 
 	client := &http.Client{

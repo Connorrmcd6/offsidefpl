@@ -9,6 +9,9 @@ import (
 )
 
 func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
+	// Public API endpoints
+	apiGroup := e.Router.Group("/api")
+	apiGroup.GET("/run_etl", handlers.RunETL)
 	appGroup := e.Router.Group("/app", middleware.LoadAuthContextFromCookie(pb), middleware.AuthGuard)
 
 	appGroup.GET("", func(c echo.Context) error {
@@ -19,6 +22,7 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	appGroup.POST("/set_team_id", handlers.SetTeamID)
 	appGroup.GET("/user_league_selection", handlers.UserLeaguesGet)
 	appGroup.GET("/set_default_league", handlers.SetDefaultLeague)
+	appGroup.GET("/check_default", handlers.CheckDefaultLeague)
 	appGroup.POST("/intialise_league", handlers.InitialiseLeague)
 	appGroup.GET("/check_for_league", handlers.CheckForLeague)
 	appGroup.GET("/rules", handlers.RulesGet)
@@ -41,4 +45,5 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	e.Router.GET("/", func(c echo.Context) error {
 		return c.Redirect(303, "/app/profile")
 	})
+
 }

@@ -3,6 +3,10 @@ package components
 import "github.com/cmcd97/bytesize/app/types"
 
 templ LeagueSelector() {
+	<div hx-get="/app/check_default" hx-trigger="load" hx-target="this" hx-swap="innerHTML"></div>
+}
+
+templ LeagueDropdownButton() {
 	<div class="flex justify-end" hx-get="/app/user_league_selection" hx-target="#league_dropdown" hx-swap="innerHTML" hx-trigger="load">
 		<div class="flex items-stretch">
 			<div class="dropdown dropdown-end ">

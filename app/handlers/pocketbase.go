@@ -132,6 +132,33 @@ func SetDefaultLeague(c echo.Context) error {
 
 }
 
+func CheckDefaultLeague(c echo.Context) error {
+	authRecord, ok := c.Get("authRecord").(*models.Record)
+	if !ok || authRecord == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+	}
+
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+
+	defaultLeague, err := pb.Dao().FindFirstRecordByFilter(
+		"leagues",
+		fmt.Sprintf("userID = '%s' && isDefault = true", authRecord.Id),
+	)
+
+	fmt.Println(defaultLeague)
+
+	if err != nil || defaultLeague == nil {
+		// No default league found - show dropdown
+		return lib.Render(c, http.StatusOK, components.LeagueDropdownButton())
+	}
+
+	// Default league exists - return nil
+	return nil
+}
+
 func updateDefaultLeague(c echo.Context, leagueID string) ([]types.UserLeagueSelection, bool, error) {
 	// Context validation outside transaction
 	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
@@ -1496,4 +1523,34 @@ func createNominationCard(txDao *daos.Dao, collection *models.Collection, nomine
 	card.Set("cardHash", cardHash)
 
 	return txDao.SaveRecord(card)
+}
+
+func RunETL(c echo.Context) error {
+	// Get PocketBase instance
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+
+	// Add timestamp for tracking
+	startTime := time.Now()
+	log.Printf("[ETL] Starting ETL process at %v", startTime)
+
+	// Run ETL operation
+	if err := lib.ManualDataCheck(pb); err != nil {
+		log.Printf("[ETL] Failed: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "ETL process failed")
+	}
+
+	// Calculate duration and log success
+	duration := time.Since(startTime)
+	log.Printf("[ETL] Completed successfully in %v", duration)
+
+	// Return success response with timing information
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":   "success",
+		"message":  "ETL process completed",
+		"duration": duration.String(),
+	})
 }
