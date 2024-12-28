@@ -21,9 +21,15 @@ templ Statbar(gw int, manager, team string, isWinner, Nominated, Finished bool) 
 						></path>
 					</svg>
 				</div>
-				<div class="stat-title">Game Week { strconv.Itoa(gw) } Winner</div>
-				<div class="stat-value text-sm">{ manager }</div>
-				<div class="stat-desc">{ team }</div>
+				if Finished {
+					<div class="stat-title">Game Week { strconv.Itoa(gw) } Winner</div>
+					<div class="stat-value text-sm">{ manager }</div>
+					<div class="stat-desc">{ team }</div>
+				} else {
+					<div class="stat-title">Current Gameweek Leader</div>
+					<div class="stat-value text-sm">{ manager }</div>
+					<div class="stat-desc">{ team }</div>
+				}
 			</div>
 		</div>
 		if isWinner && !Nominated && Finished {

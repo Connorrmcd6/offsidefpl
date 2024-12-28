@@ -1135,45 +1135,41 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 
 	var aggregatedResults []types.AggregatedResults
 	query := fmt.Sprintf(`
-WITH adjusted_points AS (
-    SELECT 
-        gameweek, 
-        teamID, 
-        userID,
-        CASE 
-            WHEN userID IN (%s) AND gameweek = (
-                SELECT MAX(gameweek) 
-                FROM cards 
-                WHERE adminVerified = FALSE 
-                AND userID = results.userID
-            ) THEN 0
-            ELSE points
-        END as adjusted_points,
-        hits
-    FROM results
-),
-new_results AS (
-    SELECT 
-        gameweek, 
-        teamID, 
-        userID,
-        adjusted_points as points,
-        SUM(adjusted_points - (hits * 4)) OVER (
-            PARTITION BY userID 
-            ORDER BY gameweek
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) as totalPoints
-    FROM adjusted_points 
-    GROUP BY gameweek, teamID, userID, adjusted_points, hits
-)
-SELECT nr.*
-FROM new_results nr
-LEFT JOIN aggregated_results ra 
-    ON nr.gameweek = ra.gameweek 
-    AND nr.userID = ra.userID
-WHERE ra.id IS NULL
-ORDER BY nr.userID, nr.gameweek
-`, penalizedUsersStr)
+        WITH adjusted_points AS (
+            SELECT 
+                gameweek, 
+                teamID, 
+                userID,
+                CASE 
+                    WHEN userID IN (%s) AND gameweek = (
+                        SELECT MAX(gameweek) 
+                        FROM cards 
+                        WHERE adminVerified = FALSE 
+                        AND userID = results.userID
+                    ) THEN 0
+                    ELSE points
+                END as adjusted_points,
+                hits
+            FROM results
+        ),
+        new_results AS (
+            SELECT 
+                gameweek, 
+                teamID, 
+                userID,
+                adjusted_points as points,
+                SUM(adjusted_points - (hits * 4)) OVER (
+                    PARTITION BY userID 
+                    ORDER BY gameweek
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ) as totalPoints
+            FROM adjusted_points 
+            GROUP BY gameweek, teamID, userID, adjusted_points, hits
+        )
+        SELECT nr.*
+        FROM new_results nr
+        ORDER BY nr.userID, nr.gameweek
+    `, penalizedUsersStr)
 
 	err = pb.Dao().DB().NewQuery(query).All(&aggregatedResults)
 	if err != nil {
@@ -1181,7 +1177,13 @@ ORDER BY nr.userID, nr.gameweek
 		return fmt.Errorf("error aggregating results: %w", err)
 	}
 
-	// Now we can directly save all results since we already filtered out existing ones
+	// Get affected gameweeks
+	affectedGameweeks := make(map[int]bool)
+	for _, result := range aggregatedResults {
+		affectedGameweeks[result.Gameweek] = true
+	}
+
+	// Run transaction for delete and insert
 	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		collection, err := txDao.FindCollectionByNameOrId("aggregated_results")
 		if err != nil {
@@ -1189,6 +1191,31 @@ ORDER BY nr.userID, nr.gameweek
 			return fmt.Errorf("error finding collection: %w", err)
 		}
 
+		// Delete existing records for affected gameweeks
+		for gameweek := range affectedGameweeks {
+			filter := fmt.Sprintf("gameweek = %d", gameweek)
+			records, err := txDao.FindRecordsByFilter(
+				"aggregated_results", // collection name
+				filter,               // filter
+				"",                   // sort (empty for no specific sorting)
+				0,                    // limit (0 for no limit)
+				0,                    // offset (0 for no offset)
+			)
+			if err != nil {
+				log.Printf("[ResultsAggregating] Error finding records for gameweek %d: %v", gameweek, err)
+				return fmt.Errorf("error finding existing records: %w", err)
+			}
+
+			for _, record := range records {
+				if err := txDao.DeleteRecord(record); err != nil {
+					log.Printf("[ResultsAggregating] Error deleting record %s: %v", record.Id, err)
+					return fmt.Errorf("error deleting record: %w", err)
+				}
+			}
+			log.Printf("[ResultsAggregating] Deleted %d existing records for gameweek %d", len(records), gameweek)
+		}
+
+		// Insert new records
 		savedCount := 0
 		for _, result := range aggregatedResults {
 			record := models.NewRecord(collection)
@@ -1205,7 +1232,7 @@ ORDER BY nr.userID, nr.gameweek
 			}
 			savedCount++
 		}
-		log.Printf("[ResultsAggregating] Transaction complete: %d new records saved", savedCount)
+		log.Printf("[ResultsAggregating] Transaction complete: deleted and replaced %d records", savedCount)
 		return nil
 	})
 

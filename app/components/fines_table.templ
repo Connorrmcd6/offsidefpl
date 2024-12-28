@@ -9,11 +9,7 @@ import (
 templ FinesTable(cards []types.TableCard) {
 	<div class="mb-4">
 		<p class="font-bold text-base-content">Cards</p>
-		<div class="w-72 flex items-center justify-center mb-2 join">
-			// <button class="btn btn-outline btn-sm btn-primary join-item w-24">Submit</button>
-			// <button class="btn btn-outline btn-sm btn-secondary join-item w-24">Nominate</button>
-			// <button class="btn btn-outline btn-sm btn-accent join-item text-accent-content w-24">Rebound</button>
-		</div>
+		<div class="w-72 flex items-center justify-center mb-2 join"></div>
 		if len(cards) == 0 {
 			<div role="alert" class="alert bg-neutral">
 				<svg
