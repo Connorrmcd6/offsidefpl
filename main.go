@@ -37,6 +37,7 @@ func main() {
 		authGroup := e.Router.Group("/auth", middleware.LoadAuthContextFromCookie(pb))
 		auth.RegisterLoginRoutes(e, *authGroup)
 		auth.RegisterRegisterRoutes(e, *authGroup)
+		auth.RegisterLearnRoutes(e, *authGroup)
 
 		app.InitAppRoutes(e, pb)
 

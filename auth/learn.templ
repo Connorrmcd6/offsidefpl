@@ -1,0 +1,117 @@
+package auth
+
+import "github.com/cmcd97/bytesize/lib"
+
+templ Learn() {
+	@lib.BaseLayout() {
+		<div id="learn-page" class="relative isolate overflow-hidden bg-base-200 flex flex-col justify-center items-center h-screen">
+			@Leagues()
+		</div>
+	}
+}
+
+templ Leagues() {
+	<div class="card bg-base-100 w-96 shadow-xl">
+		<figure>
+			<img
+				src="/public/assets/leagues.png"
+				alt="Leagues"
+			/>
+		</figure>
+		<div class="card-body font-small-text">
+			<h2 class="card-title font-brand">Play against friends</h2>
+			<p>Link your mini league and play a higher stakes version of FPL to keep everyone more engaged!</p>
+			<div class="card-actions justify-end">
+				<button class="btn btn-sm btn-primary btn-outline" hx-get="/auth/login" hx-target="#learn-page" hx-swap="outerHTML">Back</button>
+				<button class="btn btn-sm btn-primary" hx-get="/auth/cards" hx-target="#learn-page" hx-swap="innerHTML">Next</button>
+			</div>
+		</div>
+	</div>
+	<ul class="steps mt-5 mt-5">
+		<li class="step step-primary">Leagues</li>
+		<li class="step">Cards</li>
+		<li class="step">Winners</li>
+		<li class="step">Reversals</li>
+	</ul>
+}
+
+templ Cards() {
+	<div class="card bg-base-100 w-96 shadow-xl">
+		<figure>
+			<img
+				src="/public/assets/cards.png"
+				alt="Cards"
+			/>
+		</figure>
+		<div class="card-body font-small-text">
+			<h2 class="card-title font-brand">Avoid Cards</h2>
+			<p>1. You will recieve a yellow card if a player in your starting 11 scores an own goal, misses a penalty or gets a red card.</p>
+			<p>2. If you pick up two yellows you will be suspended in the following game week</p>
+			<p>3. You can clear a yellow card by submitting a fine that your admin approves of - clear it before you pick up a second!</p>
+			<div class="card-actions justify-end">
+				<button class="btn btn-sm btn-primary" hx-get="/auth/learn" hx-target="#learn-page" hx-swap="innerHTML">Back</button>
+				<button class="btn btn-sm btn-primary" hx-get="/auth/winners" hx-target="#learn-page" hx-swap="innerHTML">Next</button>
+			</div>
+		</div>
+	</div>
+	<ul class="steps mt-5">
+		<li class="step step-primary">Leagues</li>
+		<li class="step step-primary">Cards</li>
+		<li class="step">Winners</li>
+		<li class="step">Reversals</li>
+	</ul>
+}
+
+templ Winners() {
+	<div class="card bg-base-100 w-96 shadow-xl">
+		<figure>
+			<img
+				src="/public/assets/winner.png"
+				alt="Winners"
+			/>
+		</figure>
+		<div class="card-body font-small-text">
+			<h2 class="card-title font-brand">Weekly Winners!</h2>
+			<p>1. Each week the manager that scores the highest points will be able to dish out yellow cards</p>
+			<p>2. Managers can either pick a single person of their choice or they can randomly pick 3</p>
+			<p>3. Random choices may or may not include the winner</p>
+			<div class="card-actions justify-end">
+				<button class="btn btn-sm btn-primary btn-outline btn-sm" hx-get="/auth/cards" hx-target="#learn-page" hx-swap="innerHTML">Back</button>
+				<button class="btn btn-sm btn-primary" hx-get="/auth/reversals" hx-target="#learn-page" hx-swap="innerHTML">Next</button>
+			</div>
+		</div>
+	</div>
+	<ul class="steps mt-5">
+		<li class="step step-primary">Leagues</li>
+		<li class="step step-primary">Cards</li>
+		<li class="step step-primary">Winners</li>
+		<li class="step">Reversals</li>
+	</ul>
+}
+
+templ Reversals() {
+	<div class="card bg-base-100 w-96 shadow-xl">
+		<figure>
+			<img
+				src="/public/assets/reverse.png"
+				alt="Reversal"
+			/>
+		</figure>
+		<div class="card-body font-small-text">
+			<h2 class="card-title font-brand">No u</h2>
+			<p>1. Each manager gets one reverse card per season.</p>
+			<p>2. They may use this whenever they want "reverse" a card back to the winner of the week</p>
+			<p>3. Multiple people can reverse the same person at once.</p>
+			<div class="card-actions justify-end">
+				<button class="btn btn-sm btn-primary" hx-get="/auth/winners" hx-target="#learn-page" hx-swap="innerHTML">Back</button>
+				<button class="btn btn-sm btn-accent" hx-get="/auth/register" hx-target="#learn-page" hx-swap="outerHTML">Signup</button>
+			</div>
+		</div>
+	</div>
+	<ul class="steps mt-5">
+		<li class="step step-primary">Leagues</li>
+		<li class="step step-primary">Cards</li>
+		<li class="step step-primary">Winners</li>
+		<li class="step step-primary">Reversals</li>
+	</ul>
+}
