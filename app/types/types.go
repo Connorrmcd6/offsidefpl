@@ -329,11 +329,12 @@ type OutstandingCards struct {
 }
 
 type AggregatedResults struct {
-	Gameweek    int    `db:"gameweek"`
-	TeamID      int    `db:"teamID"`
-	UserID      string `db:"userID"`
-	Points      int    `db:"points"`
-	TotalPoints int    `db:"totalPoints"`
+	Gameweek        int    `db:"gameweek"`
+	TeamID          int    `db:"teamID"`
+	UserID          string `db:"userID"`
+	Points          int    `db:"points"`
+	TotalPoints     int    `db:"totalPoints"`
+	IsSuspendedNext bool   `db:"isSuspendedNext"`
 }
 
 type GameweekWinner struct {

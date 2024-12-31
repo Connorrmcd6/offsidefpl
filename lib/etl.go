@@ -1135,41 +1135,57 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 
 	var aggregatedResults []types.AggregatedResults
 	query := fmt.Sprintf(`
-        WITH adjusted_points AS (
+    WITH suspension_status AS (
             SELECT 
-                gameweek, 
-                teamID, 
-                userID,
+                r.gameweek, 
+                r.teamID, 
+                r.userID,
                 CASE 
-                    WHEN userID IN (%s) AND gameweek = (
-                        SELECT MAX(gameweek) 
-                        FROM cards 
-                        WHERE adminVerified = FALSE 
-                        AND userID = results.userID
-                    ) THEN 0
-                    ELSE points
-                END as adjusted_points,
-                hits
-            FROM results
+                    WHEN r.userID IN (%s) AND r.gameweek = (
+                        SELECT MAX(c.gameweek) 
+                        FROM cards c
+                        WHERE c.adminVerified = FALSE 
+                        AND c.userID = r.userID
+                    ) THEN TRUE
+                    ELSE FALSE
+                END as isSuspendedNext
+            FROM results r
         ),
-        new_results AS (
-            SELECT 
-                gameweek, 
-                teamID, 
-                userID,
-                adjusted_points as points,
-                SUM(adjusted_points - (hits * 4)) OVER (
-                    PARTITION BY userID 
-                    ORDER BY gameweek
-                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                ) as totalPoints
-            FROM adjusted_points 
-            GROUP BY gameweek, teamID, userID, adjusted_points, hits
-        )
-        SELECT nr.*
-        FROM new_results nr
-        ORDER BY nr.userID, nr.gameweek
-    `, penalizedUsersStr)
+    adjusted_points AS (
+        SELECT 
+            r.gameweek, 
+            r.teamID, 
+            r.userID,
+            r.points,
+            r.hits,
+            s.isSuspendedNext,
+            CASE 
+                WHEN EXISTS (
+                    SELECT 1 
+                    FROM suspension_status prev 
+                    WHERE prev.userID = r.userID 
+                    AND prev.gameweek = r.gameweek - 1 
+                    AND prev.isSuspendedNext = TRUE
+                ) THEN 0
+                ELSE r.points
+            END as adjusted_points
+        FROM results r
+        JOIN suspension_status s ON r.gameweek = s.gameweek AND r.userID = s.userID
+    )
+    SELECT 
+        gameweek, 
+        teamID, 
+        userID,
+        adjusted_points as points,
+        SUM(adjusted_points - (hits * 4)) OVER (
+            PARTITION BY userID 
+            ORDER BY gameweek
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) as totalPoints,
+        isSuspendedNext
+    FROM adjusted_points 
+    ORDER BY userID, gameweek
+`, penalizedUsersStr)
 
 	err = pb.Dao().DB().NewQuery(query).All(&aggregatedResults)
 	if err != nil {
@@ -1224,6 +1240,7 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 			record.Set("userID", result.UserID)
 			record.Set("points", result.Points)
 			record.Set("totalPoints", result.TotalPoints)
+			record.Set("isSuspendedNext", result.IsSuspendedNext)
 
 			if err := txDao.SaveRecord(record); err != nil {
 				log.Printf("[ResultsAggregating] Error saving record for user %s, gameweek %d: %v",
