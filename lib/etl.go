@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1135,56 +1134,78 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 
 	var aggregatedResults []types.AggregatedResults
 	query := fmt.Sprintf(`
-    WITH suspension_status AS (
-            SELECT 
-                r.gameweek, 
-                r.teamID, 
-                r.userID,
-                CASE 
-                    WHEN r.userID IN (%s) AND r.gameweek = (
-                        SELECT MAX(c.gameweek) 
-                        FROM cards c
-                        WHERE c.adminVerified = FALSE 
-                        AND c.userID = r.userID
-                    ) THEN TRUE
-                    ELSE FALSE
-                END as isSuspendedNext
-            FROM results r
-        ),
-    adjusted_points AS (
-        SELECT 
-            r.gameweek, 
-            r.teamID, 
-            r.userID,
-            r.points,
-            r.hits,
-            s.isSuspendedNext,
-            CASE 
-                WHEN EXISTS (
-                    SELECT 1 
-                    FROM suspension_status prev 
-                    WHERE prev.userID = r.userID 
-                    AND prev.gameweek = r.gameweek - 1 
-                    AND prev.isSuspendedNext = TRUE
-                ) THEN 0
-                ELSE r.points
-            END as adjusted_points
-        FROM results r
-        JOIN suspension_status s ON r.gameweek = s.gameweek AND r.userID = s.userID
-    )
+WITH existing_suspensions AS (
+    SELECT userID, gameweek
+    FROM aggregated_results
+    WHERE isSuspendedNext = TRUE
+),
+card_status AS (
     SELECT 
-        gameweek, 
-        teamID, 
         userID,
-        adjusted_points as points,
-        SUM(adjusted_points - (hits * 4)) OVER (
-            PARTITION BY userID 
-            ORDER BY gameweek
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) as totalPoints,
-        isSuspendedNext
-    FROM adjusted_points 
-    ORDER BY userID, gameweek
+        COUNT(*) as incomplete_cards,
+        MAX(gameweek) as max_card_gameweek
+    FROM cards
+    WHERE adminVerified = FALSE
+    GROUP BY userID
+    HAVING COUNT(*) >= 2
+),
+suspension_status AS (
+    SELECT 
+        r.gameweek, 
+        r.teamID, 
+        r.userID,
+        CASE 
+            WHEN cs.userID IS NOT NULL AND r.gameweek = cs.max_card_gameweek THEN TRUE
+            WHEN r.userID IN (%s) AND r.gameweek = (
+                SELECT MAX(c.gameweek) 
+                FROM cards c
+                WHERE c.adminVerified = FALSE 
+                AND c.userID = r.userID
+            ) THEN TRUE
+            ELSE FALSE
+        END as isSuspendedNext
+    FROM results r
+    LEFT JOIN card_status cs ON r.userID = cs.userID
+),
+adjusted_points AS (
+    SELECT 
+        r.gameweek, 
+        r.teamID, 
+        r.userID,
+        r.points,
+        r.hits,
+        s.isSuspendedNext,
+        CASE 
+            WHEN EXISTS (
+                SELECT 1 
+                FROM existing_suspensions es
+                WHERE es.userID = r.userID 
+                AND es.gameweek = r.gameweek - 1
+            ) THEN 0
+            WHEN EXISTS (
+                SELECT 1 
+                FROM suspension_status prev 
+                WHERE prev.userID = r.userID 
+                AND prev.gameweek = r.gameweek - 1 
+                AND prev.isSuspendedNext = TRUE
+            ) THEN 0
+            ELSE r.points
+        END as adjusted_points
+    FROM results r
+    JOIN suspension_status s ON r.gameweek = s.gameweek AND r.userID = s.userID
+)
+SELECT 
+    gameweek, 
+    teamID, 
+    userID,
+    adjusted_points as points,
+    SUM(adjusted_points - (hits * 4)) OVER (
+        PARTITION BY userID 
+        ORDER BY gameweek
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) as totalPoints,
+    isSuspendedNext
+FROM adjusted_points 
 `, penalizedUsersStr)
 
 	err = pb.Dao().DB().NewQuery(query).All(&aggregatedResults)
@@ -1207,15 +1228,18 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 			return fmt.Errorf("error finding collection: %w", err)
 		}
 
+		// Store existing suspensions
+		suspensions := make(map[string]bool) // key: "userID-gameweek"
+
 		// Delete existing records for affected gameweeks
 		for gameweek := range affectedGameweeks {
 			filter := fmt.Sprintf("gameweek = %d", gameweek)
 			records, err := txDao.FindRecordsByFilter(
-				"aggregated_results", // collection name
-				filter,               // filter
-				"",                   // sort (empty for no specific sorting)
-				0,                    // limit (0 for no limit)
-				0,                    // offset (0 for no offset)
+				"aggregated_results",
+				filter,
+				"",
+				0,
+				0,
 			)
 			if err != nil {
 				log.Printf("[ResultsAggregating] Error finding records for gameweek %d: %v", gameweek, err)
@@ -1223,6 +1247,13 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 			}
 
 			for _, record := range records {
+				// Store suspension status before deleting
+				if suspended, _ := record.Get("isSuspendedNext").(bool); suspended {
+					userID := record.Get("userID").(string)
+					key := fmt.Sprintf("%s-%d", userID, gameweek)
+					suspensions[key] = true
+				}
+
 				if err := txDao.DeleteRecord(record); err != nil {
 					log.Printf("[ResultsAggregating] Error deleting record %s: %v", record.Id, err)
 					return fmt.Errorf("error deleting record: %w", err)
@@ -1240,7 +1271,14 @@ func updateResultsAggregated(pb *pocketbase.PocketBase) error {
 			record.Set("userID", result.UserID)
 			record.Set("points", result.Points)
 			record.Set("totalPoints", result.TotalPoints)
-			record.Set("isSuspendedNext", result.IsSuspendedNext)
+
+			// Check if there was a previous suspension
+			key := fmt.Sprintf("%s-%d", result.UserID, result.Gameweek)
+			if suspensions[key] {
+				record.Set("isSuspendedNext", true)
+			} else {
+				record.Set("isSuspendedNext", result.IsSuspendedNext)
+			}
 
 			if err := txDao.SaveRecord(record); err != nil {
 				log.Printf("[ResultsAggregating] Error saving record for user %s, gameweek %d: %v",
@@ -1272,42 +1310,37 @@ func verifyExpiredCards(pb *pocketbase.PocketBase) error {
 	log.Println("[ExpiredCardCheck] pipeline starting")
 
 	var aggregatedResults []types.AggregatedResults
-	err := pb.Dao().DB().NewQuery("SELECT * FROM aggregated_results where points = 0").All(&aggregatedResults)
+	err := pb.Dao().DB().NewQuery("SELECT * FROM aggregated_results where isSuspendedNext = TRUE").All(&aggregatedResults)
 
 	if err != nil {
 		log.Printf("[ExpiredCardCheck] Error fetching aggregated results: %v", err)
 		return fmt.Errorf("error fetching aggregated results: %w", err)
 	}
 
-	log.Printf("[ExpiredCardCheck] Found %d results with 0 points", len(aggregatedResults))
+	log.Printf("[ExpiredCardCheck] Found %d suspended results", len(aggregatedResults))
 	if len(aggregatedResults) == 0 {
 		return nil
 	}
 
-	// Build map of userID -> gameweeks for easier lookup
-	userGameweeks := make(map[string][]int)
+	// Map of userID -> max suspension gameweek
+	userMaxSuspensionWeek := make(map[string]int)
 	for _, result := range aggregatedResults {
-		userGameweeks[result.UserID] = append(userGameweeks[result.UserID], result.Gameweek)
+		if existing, ok := userMaxSuspensionWeek[result.UserID]; !ok || result.Gameweek > existing {
+			userMaxSuspensionWeek[result.UserID] = result.Gameweek
+		}
 	}
 
-	// Update cards in transaction
 	err = pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
-		for userID, gameweeks := range userGameweeks {
-			// Convert gameweeks to string for IN clause
-			gameweekStrs := make([]string, len(gameweeks))
-			for i, gw := range gameweeks {
-				gameweekStrs[i] = strconv.Itoa(gw)
-			}
-			// gameweeksStr := strings.Join(gameweekStrs, ",")
-
-			// Execute bulk update
+		for userID, maxGameweek := range userMaxSuspensionWeek {
 			updateQuery := fmt.Sprintf(`
                 UPDATE cards 
                 SET adminVerified = TRUE, 
                     isCompleted = TRUE
                 WHERE userID = '%s' 
-                AND adminVerified = FALSE`,
+                AND adminVerified = FALSE 
+                AND gameweek <= %d`,
 				userID,
+				maxGameweek,
 			)
 
 			result, err := txDao.DB().NewQuery(updateQuery).Execute()
@@ -1317,7 +1350,8 @@ func verifyExpiredCards(pb *pocketbase.PocketBase) error {
 			}
 
 			rowsAffected, _ := result.RowsAffected()
-			log.Printf("[ExpiredCardCheck] Updated %d cards for user %s", rowsAffected, userID)
+			log.Printf("[ExpiredCardCheck] Updated %d cards for user %s up to gameweek %d",
+				rowsAffected, userID, maxGameweek)
 		}
 		return nil
 	})
