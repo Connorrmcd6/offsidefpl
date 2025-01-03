@@ -40,7 +40,7 @@ templ LoginForm(form LoginFormValue, err error) {
 						class="input input-sm input-bordered w-full max-w-xs"
 					/>
 					<input
-						type="text"
+						type="password"
 						name="password"
 						id="password"
 						value={ form.password }
@@ -66,8 +66,17 @@ templ LoginForm(form LoginFormValue, err error) {
 						</div>
 					}
 					<div class="card-actions justify-end  mt-5">
-						<button class="btn btn-sm btn-neutral btn-outline" hx-get="/auth/register" hx-target="#login-form" hx-swap="outerHTML">Register</button>
-						<button class="btn btn-sm btn-primary" type="submit">Login</button>
+						<button
+							type="button"
+							class="btn btn-sm btn-neutral btn-outline"
+							hx-get="/auth/register"
+							hx-target="#login-form"
+							hx-swap="outerHTML"
+						>Register</button>
+						<button
+							type="submit"
+							class="btn btn-sm btn-primary"
+						>Login</button>
 					</div>
 				</div>
 			</div>
