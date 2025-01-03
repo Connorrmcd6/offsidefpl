@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-templ FinesTable(cards []types.TableCard) {
+templ FinesTable(cards []types.TableCard, isSuspended bool) {
 	<div class="mb-4">
 		<p class="font-bold text-base-content">Cards</p>
 		<div class="w-72 flex items-center justify-center mb-2 join"></div>
@@ -27,7 +27,7 @@ templ FinesTable(cards []types.TableCard) {
 				</svg>
 				<span>No outstanding cards</span>
 			</div>
-		} else if len(cards) >=2 {
+		} else if len(cards) >=2 || isSuspended {
 			<div role="alert" class="alert bg-error">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"

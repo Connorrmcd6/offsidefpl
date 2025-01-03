@@ -27,7 +27,7 @@ templ LeagueTable(leagueRows []types.LeagueStandingRow, gameweek int) {
 								<div>
 									<div class="font-bold flex flex-row">
 										{ row.FirstName }
-										if row.CardCount >= 2 {
+										if row.CardCount >= 2 || row.IsSuspended {
 											<a href="/path/to/your/image.svg" target="_blank">
 												<img src="/public/assets/yellowRed.svg" class="h-4 w-4" alt="Icon"/>
 											</a>

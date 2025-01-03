@@ -353,6 +353,7 @@ type LeagueStandingRow struct {
 	GameweekPoints int    `db:"gameweekPoints"`
 	TotalPoints    int    `db:"totalPoints"`
 	CardCount      int    `db:"cardCount"`
+	IsSuspended    bool   `db:"isSuspended"`
 }
 
 type CardApprovals struct {

@@ -609,6 +609,7 @@ func UserCardsGet(c echo.Context) error {
 	}
 
 	var cards []types.TableCard
+	isSuspended := false
 
 	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		teamID := record.Get("teamID")
@@ -654,6 +655,26 @@ func UserCardsGet(c echo.Context) error {
 		}
 
 		log.Printf("Retrieved %d cards for team %v in league %v", len(cards), teamID, leagueID)
+
+		gameweekNum, err := getMaxGameweek(txDao)
+		if err != nil {
+			return err
+		}
+
+		suspendedRecord, err := txDao.FindFirstRecordByFilter(
+			"aggregated_results",
+			"userID = {:userID} && gameweek = {:gameweek}",
+			dbx.Params{"userID": record.Get("id"), "gameweek": gameweekNum - 1},
+		)
+
+		if err != nil {
+			return err
+		}
+
+		if suspendedRecord != nil {
+			isSuspended = suspendedRecord.GetBool("isSuspendedNext")
+		}
+
 		return nil
 	})
 
@@ -662,7 +683,7 @@ func UserCardsGet(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
 	}
 
-	return lib.Render(c, http.StatusOK, components.FinesTable(cards))
+	return lib.Render(c, http.StatusOK, components.FinesTable(cards, isSuspended))
 }
 
 func LeagueStandingsGet(c echo.Context) error {
@@ -730,7 +751,8 @@ func LeagueStandingsGet(c echo.Context) error {
 				"u.teamName",
 				"ag.points as gameweekPoints",
 				"ag.totalPoints",
-				"(SELECT COUNT(*) FROM cards c2 WHERE c2.userID = ag.userID AND c2.adminVerified = FALSE) as cardCount").
+				"(SELECT COUNT(*) FROM cards c2 WHERE c2.userID = ag.userID AND c2.adminVerified = FALSE) as cardCount",
+				"COALESCE((SELECT isSuspendedNext FROM aggregated_results WHERE userID = ag.userID AND gameweek = {:maxGW} - 1), FALSE) as isSuspended").
 			From("aggregated_results ag").
 			LeftJoin("users u", dbx.NewExp("ag.userID = u.id")).
 			Where(dbx.NewExp("ag.gameweek = {:maxGW}", dbx.Params{"maxGW": gameweekNum})).
