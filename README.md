@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/cmcd97/bytesize/blob/main/public/assets/offside_banner.svg" alt="bytesize logo" width="750"/>
+  <img src="https://github.com/Connorrmcd6/offsidefpl/blob/main/public/assets/offside_banner.svg" alt="bytesize logo" width="750"/>
 </p>
 
 OffsideFPL was created with the bytesize template repo which can be found here https://github.com/cmcd97/bytesize
