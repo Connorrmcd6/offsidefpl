@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://github.com/cmcd97/bytesize/blob/main/public/assets/bytesize_banner.svg" alt="bytesize logo" width="750"/>
+  <img src="https://github.com/cmcd97/bytesize/blob/main/public/assets/offside_banner.svg" alt="bytesize logo" width="750"/>
 </p>
 
-Bytesize is a web application template designed to help you kickstart your web development projects with ease. The core philosophy of Bytesize is simplicity and lightweight performance.
+OffsideFPL was created with the bytesize template repo which can be found here https://github.com/cmcd97/bytesize
 
 ## Features
 
