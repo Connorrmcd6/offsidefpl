@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"regexp"
+
 	"github.com/a-h/templ"
 	"github.com/cmcd97/bytesize/lib"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -18,8 +20,24 @@ type RegisterFormValue struct {
 
 func (rfv RegisterFormValue) Validate() error {
 	return validation.ValidateStruct(&rfv,
-		validation.Field(&rfv.username, validation.Required, validation.Length(3, 50)),
-		validation.Field(&rfv.password, validation.Required),
+		validation.Field(&rfv.username,
+			validation.Required.Error("Username is required"),
+			validation.Length(3, 50).Error("Username must be between 3 and 50 characters"),
+			validation.Match(regexp.MustCompile(`^[^\s]+$`)).Error("Username cannot contain spaces"),
+		),
+		validation.Field(&rfv.password,
+			validation.Required.Error("Password is required"),
+		),
+		validation.Field(&rfv.passwordRepeat,
+			validation.Required.Error("Please confirm your password"),
+			validation.By(func(value interface{}) error {
+				repeat := value.(string)
+				if repeat != rfv.password {
+					return validation.NewError("validation_passwords_mismatch", "Passwords do not match")
+				}
+				return nil
+			}),
+		),
 	)
 }
 

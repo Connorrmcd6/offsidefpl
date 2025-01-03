@@ -564,7 +564,7 @@ func updateGameweekResults(pb *pocketbase.PocketBase, gameweek int) error {
 	// Fetch existing users from DB
 	var users []types.DatabaseUsers
 	err = pb.Dao().DB().
-		NewQuery("SELECT DISTINCT id, teamID FROM users").
+		NewQuery("SELECT DISTINCT id, teamID FROM users where teamID != 0").
 		All(&users)
 
 	if err != nil {
