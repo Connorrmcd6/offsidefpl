@@ -16,6 +16,7 @@ type RegisterFormValue struct {
 	username       string
 	password       string
 	passwordRepeat string
+	stayLoggedIn   string
 }
 
 func (rfv RegisterFormValue) Validate() error {
@@ -46,6 +47,7 @@ func getRegisterFormValue(c echo.Context) RegisterFormValue {
 		username:       c.FormValue("username"),
 		password:       c.FormValue("password"),
 		passwordRepeat: c.FormValue("passwordRepeat"),
+		stayLoggedIn:   c.FormValue("stayLoggedIn"),
 	}
 }
 
@@ -63,7 +65,7 @@ func RegisterRegisterRoutes(e *core.ServeEvent, group echo.Group) {
 		err := form.Validate()
 
 		if err == nil {
-			err = lib.Register(e, c, form.username, form.password, form.passwordRepeat)
+			err = lib.Register(e, c, form.username, form.password, form.passwordRepeat, form.stayLoggedIn)
 		}
 
 		if err != nil {

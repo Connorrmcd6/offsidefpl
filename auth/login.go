@@ -14,8 +14,9 @@ import (
 )
 
 type LoginFormValue struct {
-	username string
-	password string
+	username     string
+	password     string
+	stayLoggedIn string
 }
 
 func (lfv LoginFormValue) Validate() error {
@@ -27,8 +28,9 @@ func (lfv LoginFormValue) Validate() error {
 
 func getLoginFormValue(c echo.Context) LoginFormValue {
 	return LoginFormValue{
-		username: c.FormValue("username"),
-		password: c.FormValue("password"),
+		username:     c.FormValue("username"),
+		password:     c.FormValue("password"),
+		stayLoggedIn: c.FormValue("stayLoggedIn"),
 	}
 }
 
@@ -46,7 +48,7 @@ func RegisterLoginRoutes(e *core.ServeEvent, group echo.Group) {
 		err := form.Validate()
 
 		if err == nil {
-			err = lib.Login(e, c, form.username, form.password)
+			err = lib.Login(e, c, form.username, form.password, form.stayLoggedIn)
 		}
 
 		if err != nil {
