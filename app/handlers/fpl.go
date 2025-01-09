@@ -237,6 +237,17 @@ func SetTeamID(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection error")
 	}
 
+	// Check if teamID is already in use
+	existingRecord, err := pb.Dao().FindFirstRecordByData("users", "teamID", teamIDint)
+	if err != nil && err.Error() != "sql: no rows in result set" {
+		log.Printf("Error checking existing teamID: %v", err)
+		return fmt.Errorf("failed to check team id")
+	}
+	if existingRecord != nil {
+		log.Printf("TeamID %d is already in use", teamIDint)
+		return echo.NewHTTPError(http.StatusInternalServerError, "team_id already in use")
+	}
+
 	// Find and update record
 	record, err = pb.Dao().FindRecordById("users", record.Id)
 	if err != nil {

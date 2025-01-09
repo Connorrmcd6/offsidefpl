@@ -20,6 +20,7 @@ templ TeamCheck(teamID string, resp types.FPLUser) {
 				<div class="flex justify-center">
 					<span id="spinner" class="loading loading-dots loading-lg htmx-indicator"></span>
 				</div>
+				<div id="error"></div>
 				<div class="flex gap-4 justify-center">
 					<button
 						type="submit"
@@ -28,6 +29,7 @@ templ TeamCheck(teamID string, resp types.FPLUser) {
 						hx-target="#team-confirm-form"
 						hx-swap="outerHTML"
 						hx-indicator="#spinner"
+						hx-target-error="#error"
 					>
 						Yes
 					</button>
