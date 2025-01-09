@@ -57,7 +57,7 @@ func main() {
 		})
 
 		// Add cron job to run daily ETL
-		c.MustAdd("daily ETL", "0 0 * * *", func() {
+		c.MustAdd("daily ETL", "0 1 * * *", func() {
 			lib.DailyDataCheck(e, pb)
 		})
 		c.Start()

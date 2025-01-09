@@ -23,16 +23,28 @@ import (
 func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 	log.Println("[DailyDataCheck] Starting daily gameweek completion check")
 
-	todayMidnight := getTodayMidnight()
+	todayMidnight := getTodayMidnight() // 2025-01-09 00:00:00 +0000 UTC
 	timestamps := []types.DataUpdateDates{}
 
-	err := pb.DB().NewQuery("SELECT max(kickoff) as ts FROM fixtures GROUP BY date(kickoff) ORDER BY gameweek ASC").All(&timestamps)
+	err := pb.DB().NewQuery("SELECT max(kickoff) as ts FROM fixtures GROUP BY date(kickoff) ORDER BY kickoff ASC").All(&timestamps)
 	if err != nil {
 		log.Printf("[DailyDataCheck] Database query failed: %v", err)
 		return fmt.Errorf("failed to process fixtures: %w", err)
 	}
+
 	for _, ts := range timestamps {
-		fixtureEndDate, err := roundUpToNextDay(ts.TS)
+		log.Printf("[DailyDataCheck] Starting timestamp loop: %v", ts)
+		// Check if timestamp is zero value
+		parsedTime, err := time.Parse("2006-01-02 15:04:05.000Z", ts.TS)
+		if err != nil {
+			log.Printf("[DailyDataCheck] Failed to parse timestamp: %v", err)
+			continue
+		}
+		if parsedTime.IsZero() {
+			log.Printf("[DailyDataCheck] Skipping empty timestamp")
+			continue
+		}
+		fixtureEndDate, err := roundUpToNextDay(ts.TS) //2025-01-08 00:00:00 +0000 UTC  becomes 2025-01-09 00:00:00 +0000 UTC
 
 		if err != nil {
 			log.Printf("[DailyDataCheck] Date parsing error: %v", err)
@@ -40,17 +52,15 @@ func DailyDataCheck(e *core.ServeEvent, pb *pocketbase.PocketBase) error {
 		}
 		log.Println(todayMidnight, fixtureEndDate)
 		if todayMidnight == fixtureEndDate {
-
 			log.Println("[DailyDataCheck] Triggering hourly checks - gameweek completed or test condition met")
 			c := cron.New()
-			c.MustAdd("Hourly ETL", "10 * * * *", func() {
+			c.MustAdd("Hourly ETL", "0 * * * *", func() {
 				hourlyDataCheck(pb, c)
 			})
 			c.Start()
 			return nil
 		} else {
 			log.Println("[DailyDataCheck] No fixture completion detected")
-			return nil
 		}
 	}
 	return nil
