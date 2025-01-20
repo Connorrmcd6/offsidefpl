@@ -1023,7 +1023,7 @@ func AdminVerifications(c echo.Context) error {
 			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
 			return fmt.Errorf("default league not found: %w", err)
 		}
-		log.Printf("Default league found: %v", defaultLeague)
+		// log.Printf("Default league found: %v", defaultLeague)
 
 		leagueID := defaultLeague.GetInt("leagueID")
 		log.Printf("Found league ID: %v", leagueID)
@@ -1110,7 +1110,7 @@ func ApprovalPreview(c echo.Context) error {
 			msg = fmt.Sprintf("an uno reverse by %s in gameweek %d", nominator.GetString("firstName"), cardGameweek)
 		}
 
-		return lib.Render(c, http.StatusOK, components.SubmitPreview(msg, cardHash))
+		return lib.Render(c, http.StatusOK, components.ApprovalPreview(msg, cardHash))
 	}
 
 	if nominatorTeamID == 0 {
@@ -1160,13 +1160,13 @@ func ApproveCard(c echo.Context) error {
 		log.Printf("Error saving card with hash %s: %v", cardHash, err)
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to save card: %v", err))
 	}
-	log.Printf("Card with hash %s marked as completed", cardHash)
+	log.Printf("Card with hash %s marked as admin verified", cardHash)
 
 	// Redirect to home page after submitting
 	log.Println("Redirecting to /app/profile")
-	return lib.HtmxRedirect(c, "/app/profile")
+	// return lib.HtmxRedirect(c, "/app/profile")
+	return nil
 }
-
 func SingleNominationGet(c echo.Context) error {
 	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
 	if !ok || record == nil {
@@ -1196,7 +1196,7 @@ func SingleNominationGet(c echo.Context) error {
 			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
 			return fmt.Errorf("default league not found: %w", err)
 		}
-		log.Printf("Default league found: %v", defaultLeague)
+		// log.Printf("Default league found: %v", defaultLeague)
 
 		leagueID := defaultLeague.GetInt("leagueID")
 		log.Printf("Found league ID: %v", leagueID)
@@ -1354,7 +1354,7 @@ func RandomNominationGet(c echo.Context) error {
 			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
 			return fmt.Errorf("default league not found: %w", err)
 		}
-		log.Printf("Default league found: %v", defaultLeague)
+		// log.Printf("Default league found: %v", defaultLeague)
 
 		leagueID := defaultLeague.GetInt("leagueID")
 		log.Printf("Found league ID: %v", leagueID)

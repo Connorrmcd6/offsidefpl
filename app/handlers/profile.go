@@ -26,7 +26,7 @@ func ProfileGet(c echo.Context) error {
 
 	// Get team ID with proper type assertion
 	teamIDInterface := record.Get(TeamIDField)
-	log.Printf("Raw teamID value: %v (type: %T)", teamIDInterface, teamIDInterface)
+	// log.Printf("Raw teamID value: %v (type: %T)", teamIDInterface, teamIDInterface)
 
 	// Handle different types that teamID could be
 	var teamIDValue int
