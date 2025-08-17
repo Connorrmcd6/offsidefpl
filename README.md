@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/Connorrmcd6/offsidefpl/blob/main/public/assets/offside_banner.svg" alt="bytesize logo" width="750"/>
+   <img src="https://github.com/Connorrmcd6/offsidefpl/blob/main/public/assets/offside_banner.svg" alt="OffsideFPL logo" width="750"/>
 </p>
 
 ## About OffsideFPL
@@ -77,13 +77,15 @@ Before you begin, ensure you have the following installed:
 
 ## Getting Started
 
-To get started with Bytesize, follow these steps:
+To get started with OffsideFPL, follow these steps:
+
+### Local Development
 
 1. **Clone the Repository**:
 
    ```sh
-   git clone https://github.com/cmcd97/bytesize.git
-   cd bytesize
+   git clone https://github.com/Connorrmcd6/offsidefpl.git
+   cd offsidefpl
    ```
 
 2. **Install Dependencies**:
@@ -93,19 +95,11 @@ To get started with Bytesize, follow these steps:
    npm install
    ```
 
-3. **Run the Application in Development Mode**:
-
-   in separate terminals:
+3. **Run the Application in Development Mode** (in separate terminals):
 
    ```sh
    air
-   ```
-
-   ```sh
    make templ
-   ```
-
-   ```sh
    make css
    ```
 
@@ -116,9 +110,68 @@ To get started with Bytesize, follow these steps:
    ```
 
 5. **Build the Binary**:
-
-   If you just want to build the binary you will find an `app` binary in the `./bin` directory after running this command
-
+   After running this command, you will find an `app` binary in the `./bin` directory:
    ```sh
    make build
    ```
+
+### Running with Docker (Recommended for Raspberry Pi or server deployment)
+
+1. **Directory Structure**
+   Ensure you have the following structure (for deployment):
+
+   ```
+   app/
+     bin/
+       app        # compiled binary
+       .env       # environment file
+       pb_data/   # persistent database directory
+       public/    # static assets
+     Dockerfile
+     docker-compose.yml
+   ```
+
+2. **Dockerfile**
+   Use a Dockerfile that copies your pre-built binary and assets:
+
+   ```dockerfile
+   FROM alpine:3.19
+   WORKDIR /app
+   COPY bin/app .
+   COPY bin/public ./public
+   COPY bin/.env .
+   EXPOSE 8090
+   CMD ["./app", "serve", "--http=0.0.0.0:8090"]
+   ```
+
+3. **docker-compose.yml**
+   Mount the original pb_data directory for persistence:
+
+   ```yaml
+   version: "3.8"
+   services:
+     app:
+       build: .
+       ports:
+         - "8090:8090"
+       volumes:
+         - ./bin/pb_data:/app/pb_data
+       restart: always
+   ```
+
+4. **Run the Container**
+   From the directory containing your Dockerfile and docker-compose.yml, run:
+
+   ```sh
+   docker-compose up -d --build
+   ```
+
+   This will start your app in detached mode, with persistent data and automatic restarts.
+
+5. **Access the App**
+   Visit `http://<raspberry-pi-ip>:8090` in your browser.
+
+**Note:**
+
+- The `pb_data` directory is mounted as a volume, so your app's data is always persisted on the host.
+- Make sure your `.env` file sets `LISTEN_ADDR=0.0.0.0:8090` for external access.
