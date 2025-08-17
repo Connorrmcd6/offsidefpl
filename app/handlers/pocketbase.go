@@ -598,13 +598,11 @@ func UserCardsGet(c echo.Context) error {
 
 	record, ok := c.Get(apis.ContextAuthRecordKey).(*models.Record)
 	if !ok || record == nil {
-		log.Printf("Authentication failed: record=%v, ok=%v", record, ok)
 		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authentication")
 	}
 
 	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
 	if !ok || pb == nil {
-		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
 		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
 	}
 
@@ -614,31 +612,34 @@ func UserCardsGet(c echo.Context) error {
 	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		teamID := record.Get("teamID")
 		if teamID == nil {
-			log.Printf("Invalid team ID: %v", teamID)
 			return fmt.Errorf("invalid team ID")
 		}
-		log.Printf("Processing request for teamID: %v", teamID)
 
 		defaultLeague, err := getDefaultLeague(txDao, teamID)
 		if err != nil {
-			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
+			// Handle no default league gracefully
+			if err == sql.ErrNoRows || defaultLeague == nil {
+				cards = []types.TableCard{}
+				return nil
+			}
 			return fmt.Errorf("default league not found: %w", err)
 		}
 
 		leagueID := defaultLeague.GetInt("leagueID")
-		log.Printf("Found league ID: %v", leagueID)
 
 		teamIDs, err := getLeagueMembers(txDao, leagueID)
 		if err != nil {
-			log.Printf("Failed to get league members: leagueID=%v, error=%v", leagueID, err)
+			// Handle no league members gracefully
+			if err == sql.ErrNoRows || len(teamIDs) == 0 {
+				cards = []types.TableCard{}
+				return nil
+			}
 			return err
 		}
-
 		if len(teamIDs) == 0 {
-			log.Printf("No teams found in league: leagueID=%v", leagueID)
-			return fmt.Errorf("no teams found in league")
+			cards = []types.TableCard{}
+			return nil
 		}
-		log.Printf("Found %d teams in league", len(teamIDs))
 
 		err = txDao.DB().
 			Select("cards.*", "users.hasReverse as userHasReverse").
@@ -650,15 +651,18 @@ func UserCardsGet(c echo.Context) error {
 			All(&cards)
 
 		if err != nil {
-			log.Printf("Database query failed: teamID=%v, leagueID=%v, error=%v", teamID, leagueID, err)
+			// Handle no cards gracefully
+			if err == sql.ErrNoRows || len(cards) == 0 {
+				cards = []types.TableCard{}
+				return nil
+			}
 			return fmt.Errorf("find cards: %w", err)
 		}
 
-		log.Printf("Retrieved %d cards for team %v in league %v", len(cards), teamID, leagueID)
-
 		gameweekNum, err := getMaxGameweek(txDao)
 		if err != nil {
-			return err
+			// If no gameweek, just skip suspension check
+			return nil
 		}
 
 		suspendedRecord, err := txDao.FindFirstRecordByFilter(
@@ -667,11 +671,7 @@ func UserCardsGet(c echo.Context) error {
 			dbx.Params{"userID": record.Get("id"), "gameweek": gameweekNum - 1},
 		)
 
-		if err != nil {
-			return err
-		}
-
-		if suspendedRecord != nil {
+		if err == nil && suspendedRecord != nil {
 			isSuspended = suspendedRecord.GetBool("isSuspendedNext")
 		}
 
@@ -679,10 +679,12 @@ func UserCardsGet(c echo.Context) error {
 	})
 
 	if err != nil {
-		log.Printf("Transaction failed: %v", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to process request: %v", err))
+		// If we handled no data gracefully, just return empty table
+		if cards == nil {
+			cards = []types.TableCard{}
+		}
+		return lib.Render(c, http.StatusOK, components.FinesTable(cards, isSuspended))
 	}
-
 	return lib.Render(c, http.StatusOK, components.FinesTable(cards, isSuspended))
 }
 

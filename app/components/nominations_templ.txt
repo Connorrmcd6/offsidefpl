@@ -1,0 +1,12 @@
+<div class=\"modal-box\"><form method=\"dialog\"><button class=\"btn btn-sm btn-circle btn-ghost absolute right-2 top-2\">✕</button></form><h3 class=\"text-lg font-bold\">Pick one person to give a yellow card!</h3><p class=\"py-4 text-sm\">Tip: If they already have a yellow this will become a red and they will miss the next week.</p><select class=\"select select-secondary w-full max-w-xs\" name=\"selectedUser\"><option disabled selected></option> 
+<option value=\"
+\">
+</option>
+</select><div class=\"modal-action\"><form method=\"dialog\"><!-- if there is a button in form, it will close the modal --><button class=\"btn btn-sm btn-secondary text-secondary-content\" hx-post=\"/app/nominate_user\" hx-include=\"[name=&#39;selectedUser&#39;]\">Submit</button></form></div></div>
+<div class=\"modal-box\"><form method=\"dialog\"><button class=\"btn btn-sm btn-circle btn-ghost absolute right-2 top-2\">✕</button></form><h3 class=\"text-lg font-bold mb-5\">Tap the tiles to reveal 3 random nominations</h3><div class=\"grid grid-flow-row gap-4 text-center px-10 mb-5\">
+<div class=\"bg-neutral rounded-box cursor-pointer transition-all duration-300 flex flex-col p-2\" onclick=\"this.classList.remove(&#39;bg-neutral&#39;); this.classList.add(&#39;bg-accent&#39;); this.querySelector(&#39;span&#39;).classList.remove(&#39;opacity-0&#39;);\" data-revealed=\"false\"><span name=\"selectedUser\" value=\"
+\" class=\"opacity-0 transition-opacity duration-300 text-accent-content\">
+</span> <input class=\"selectedUser\" type=\"hidden\" name=\"
+\" value=\"
+\"></div>
+</div><div class=\"modal-action\"><form method=\"dialog\"><!-- if there is a button in form, it will close the modal --><button class=\"btn btn-sm btn-primary text-primary-content\" hx-post=\"/app/random_nominate_submit\" hx-include=\"[class=&#39;selectedUser&#39;]\">Submit</button></form></div></div>

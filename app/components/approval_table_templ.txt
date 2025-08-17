@@ -1,0 +1,7 @@
+<div class=\"mb-4\"><p class=\"font-bold text-base-content\">Approvals</p><div class=\"overflow-x-auto w-72 rounded-lg font-small-text\"><table class=\"table table-xs\"><!-- head --><thead class=\"bg-accent text-accent-content font-bold\"><tr><th>Person</th><th>Reason</th><th></th></tr></thead> <tbody class=\"bg-base-100\">
+<tr><td>
+</td><td>
+</td><td><button class=\"btn btn-xs btn-outline btn-accent\" onclick=\"approvalModal.showModal()\" value=\"
+\" hx-post=\"/app/approval_preview\" hx-target=\"#approvalModal\" name=\"cardHash\">Approve</button></td></tr>
+</tbody></table></div></div><dialog id=\"approvalModal\" class=\"modal\"></dialog>
+<div class=\"mb-4 hidden\"></div>

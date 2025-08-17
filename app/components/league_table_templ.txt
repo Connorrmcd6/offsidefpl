@@ -1,0 +1,12 @@
+<div class=\"w-72 rounded-lg\"><p class=\"font-bold text-base-content\">League Standings</p><div class=\"overflow-x-scroll h-96 w-full min-h-0 rounded-md font-small-text\"><table class=\"table table-xs table-pin-rows w-full \"><!-- head --><thead><tr class=\"bg-secondary text-primary-content font-bold\"><th>Pos</th><th>Player</th><th>GW
+</th><th>Total</th></tr></thead> <tbody class=\"bg-base-100\">
+<tr><th>
+</th><td><div><div class=\"font-bold flex flex-row\">
+ 
+<a href=\"/path/to/your/image.svg\" target=\"_blank\"><img src=\"/public/assets/yellowRed.svg\" class=\"h-4 w-4\" alt=\"Icon\"></a>
+<a href=\"/path/to/your/image.svg\" target=\"_blank\"><img src=\"/public/assets/yellow.svg\" class=\"h-4 w-4\" alt=\"Icon\"></a>
+</div><div class=\"text-sm opacity-50\">
+</div></div></td><td>
+</td><td>
+</td></tr>
+</tbody></table></div></div>
