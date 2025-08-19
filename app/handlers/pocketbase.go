@@ -555,7 +555,7 @@ func GameweekWinnerGet(c echo.Context) error {
 			InnerJoin("users u", dbx.NewExp("p.teamID = u.teamID")).
 			Where(dbx.NewExp("p.gameweek = {:maxGW}", dbx.Params{"maxGW": gameweekNum})).
 			AndWhere(dbx.In("p.teamID", interfaceTeamIDs...)).
-			OrderBy("p.points DESC").
+			OrderBy("p.points DESC", "p.totalPoints DESC").
 			Limit(defaultLimit).
 			One(&winner)
 
@@ -1255,52 +1255,33 @@ func SingleNominationPost(c echo.Context) error {
 	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		teamID := record.GetInt("teamID")
 		nominatorUserID := record.GetString("id")
-		log.Printf("Nominator user ID: %s", nominatorUserID)
-		log.Printf("Team ID: %d", teamID)
-
 		if teamID == 0 {
-			log.Printf("Invalid team ID: %v", teamID)
 			return fmt.Errorf("invalid team ID")
 		}
-		log.Printf("Processing nomination for teamID: %v", teamID)
-
 		defaultLeague, err := getDefaultLeague(txDao, teamID)
 		if err != nil {
-			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
 			return fmt.Errorf("default league not found: %w", err)
 		}
-
 		leagueID := defaultLeague.GetInt("leagueID")
-		log.Printf("Found league ID: %v", leagueID)
-
 		gameweekNum, err := getMaxGameweek(txDao)
 		if err != nil {
-			log.Printf("Failed to get max gameweek: %v", err)
 			return err
 		}
-		log.Printf("Using gameweek: %d", gameweekNum)
-
 		cardHash := fmt.Sprintf("%s_%d_%d_%s_%d", selectedUserID, leagueID, gameweekNum, "nomination", 0)
-
 		nomineeRecord, err := txDao.FindFirstRecordByFilter(
 			"users",
 			"id = {:userID}",
 			dbx.Params{"userID": selectedUserID},
 		)
 		if err != nil {
-			log.Printf("Failed to find nominee user: %v", err)
 			return fmt.Errorf("fetch user: %w", err)
 		}
-
 		nomineeTeamID := nomineeRecord.GetInt("teamID")
 		collection, err := pb.Dao().FindCollectionByNameOrId("cards")
 		if err != nil {
-			log.Printf("Failed to find cards collection: %v", err)
 			return err
 		}
-
 		card := models.NewRecord(collection)
-
 		card.Set("teamID", nomineeTeamID)
 		card.Set("userID", selectedUserID)
 		card.Set("nominatorTeamID", teamID)
@@ -1309,13 +1290,27 @@ func SingleNominationPost(c echo.Context) error {
 		card.Set("type", "nomination")
 		card.Set("leagueID", leagueID)
 		card.Set("cardHash", cardHash)
-
 		err = txDao.SaveRecord(card)
 		if err != nil {
-			log.Printf("Failed to save nomination card: %v", err)
 			return fmt.Errorf("save nomination: %w", err)
 		}
-		log.Printf("Successfully created nomination card with hash: %s", cardHash)
+		// Find the lowest scoring user for the week and set hasReverse to true
+		var lastUserID string
+		err = txDao.DB().Select("u.id as userID").
+			From("aggregated_results p").
+			InnerJoin("users u", dbx.NewExp("p.teamID = u.teamID")).
+			Where(dbx.NewExp("p.gameweek = {:maxGW}", dbx.Params{"maxGW": gameweekNum})).
+			AndWhere(dbx.NewExp("p.leagueID = {:leagueID}", dbx.Params{"leagueID": leagueID})).
+			OrderBy("p.points ASC", "p.totalPoints ASC").
+			Limit(1).
+			One(&lastUserID)
+		if err == nil && lastUserID != "" {
+			lastUserRecord, err := txDao.FindRecordById("users", lastUserID)
+			if err == nil && lastUserRecord != nil {
+				lastUserRecord.Set("hasReverse", true)
+				_ = txDao.SaveRecord(lastUserRecord)
+			}
+		}
 		return nil
 	})
 
@@ -1470,48 +1465,48 @@ func RandomNominationPost(c echo.Context) error {
 	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
 		teamID := record.GetInt("teamID")
 		nominatorUserID := record.GetString("id")
-		log.Printf("Nominator user ID: %s", nominatorUserID)
-		log.Printf("Team ID: %d", teamID)
-
 		if teamID == 0 {
-			log.Printf("Invalid team ID: %v", teamID)
 			return fmt.Errorf("invalid team ID")
 		}
-		log.Printf("Processing nomination for teamID: %v", teamID)
-
 		defaultLeague, err := getDefaultLeague(txDao, teamID)
 		if err != nil {
-			log.Printf("Default league lookup failed: teamID=%v, error=%v", teamID, err)
 			return fmt.Errorf("default league not found: %w", err)
 		}
-
 		leagueID := defaultLeague.GetInt("leagueID")
-		log.Printf("Found league ID: %v", leagueID)
-
 		gameweekNum, err := getMaxGameweek(txDao)
 		if err != nil {
-			log.Printf("Failed to get max gameweek: %v", err)
 			return err
 		}
-		log.Printf("Using gameweek: %d", gameweekNum)
-
 		collection, err := pb.Dao().FindCollectionByNameOrId("cards")
 		if err != nil {
 			return fmt.Errorf("find collection: %w", err)
 		}
-
 		for i, selectedUserID := range selectedUsers {
 			if selectedUserID == "" {
 				continue
 			}
-
 			err := createNominationCard(txDao, collection, selectedUserID, teamID, nominatorUserID, leagueID, gameweekNum, i)
 			if err != nil {
 				return fmt.Errorf("create nomination %d: %w", i, err)
 			}
-			log.Printf("Created nomination %d for user %s", i, selectedUserID)
 		}
-
+		// Find the lowest scoring user for the week and set hasReverse to true
+		var lastUserID string
+		err = txDao.DB().Select("u.id as userID").
+			From("aggregated_results p").
+			InnerJoin("users u", dbx.NewExp("p.teamID = u.teamID")).
+			Where(dbx.NewExp("p.gameweek = {:maxGW}", dbx.Params{"maxGW": gameweekNum})).
+			AndWhere(dbx.NewExp("p.leagueID = {:leagueID}", dbx.Params{"leagueID": leagueID})).
+			OrderBy("p.points ASC", "p.totalPoints ASC").
+			Limit(1).
+			One(&lastUserID)
+		if err == nil && lastUserID != "" {
+			lastUserRecord, err := txDao.FindRecordById("users", lastUserID)
+			if err == nil && lastUserRecord != nil {
+				lastUserRecord.Set("hasReverse", true)
+				_ = txDao.SaveRecord(lastUserRecord)
+			}
+		}
 		return nil
 	})
 
@@ -1577,4 +1572,37 @@ func RunETL(c echo.Context) error {
 		"message":  "ETL process completed",
 		"duration": duration.String(),
 	})
+}
+
+func ResetAllHasReverse(c echo.Context) error {
+	pb, ok := c.Get("pb").(*pocketbase.PocketBase)
+	if !ok || pb == nil {
+		log.Printf("Database connection failed: pb=%v, ok=%v", pb, ok)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database connection unavailable")
+	}
+	log.Println("Starting reset of hasReverse for all users...")
+	err := pb.Dao().RunInTransaction(func(txDao *daos.Dao) error {
+		users, err := txDao.FindRecordsByExpr("users", dbx.NewExp("1=1"))
+		if err != nil {
+			log.Printf("Failed to fetch users: %v", err)
+			return err
+		}
+		log.Printf("Found %d users to update.", len(users))
+		for _, user := range users {
+			userID := user.GetString("id")
+			user.Set("hasReverse", false)
+			if err := txDao.SaveRecord(user); err != nil {
+				log.Printf("Failed to update user %s: %v", userID, err)
+				return err
+			}
+			log.Printf("Reset hasReverse for user %s", userID)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("Error resetting hasReverse for all users: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to reset hasReverse for all users")
+	}
+	log.Println("Successfully reset hasReverse for all users.")
+	return c.JSON(http.StatusOK, map[string]interface{}{"status": "success", "message": "All users' hasReverse reset to false."})
 }

@@ -12,6 +12,7 @@ func InitAppRoutes(e *core.ServeEvent, pb *pocketbase.PocketBase) {
 	// Public API endpoints
 	apiGroup := e.Router.Group("/api")
 	apiGroup.GET("/run_etl", handlers.RunETL)
+	apiGroup.GET("/reset_reverse", handlers.ResetAllHasReverse)
 	appGroup := e.Router.Group("/app", middleware.LoadAuthContextFromCookie(pb), middleware.AuthGuard)
 
 	appGroup.GET("", func(c echo.Context) error {
