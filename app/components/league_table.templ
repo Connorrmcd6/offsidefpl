@@ -25,15 +25,23 @@ templ LeagueTable(leagueRows []types.LeagueStandingRow, gameweek int) {
 							<th>{ strconv.Itoa(row.Position) }</th>
 							<td>
 								<div>
-									<div class="font-bold flex flex-row">
+									<div class="font-bold flex flex-row items-center">
 										{ row.FirstName }
-										if row.CardCount >= 2 || row.IsSuspended {
+										if row.CardCount >= 4 || row.IsSuspended {
 											<a href="/path/to/your/image.svg" target="_blank">
-												<img src="/public/assets/yellowRed.svg" class="h-4 w-4" alt="Icon"/>
+												<img src="/public/assets/fourbeer.svg" class="h-4 ml-1" alt="Icon"/>
 											</a>
 										} else if row.CardCount == 1 {
 											<a href="/path/to/your/image.svg" target="_blank">
-												<img src="/public/assets/yellow.svg" class="h-4 w-4" alt="Icon"/>
+												<img src="/public/assets/onebeer.svg" class="h-4 ml-1" alt="Icon"/>
+											</a>
+										} else if row.CardCount == 2 {
+											<a href="/path/to/your/image.svg" target="_blank">
+												<img src="/public/assets/twobeer.svg" class="h-4 ml-1" alt="Icon"/>
+											</a>
+										} else if row.CardCount == 3 {
+											<a href="/path/to/your/image.svg" target="_blank">
+												<img src="/public/assets/threebeer.svg" class="h-4 ml-1" alt="Icon"/>
 											</a>
 										}
 									</div>

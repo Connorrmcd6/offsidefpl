@@ -1157,7 +1157,7 @@ card_status AS (
     FROM cards
     WHERE adminVerified = FALSE
     GROUP BY userID
-    HAVING COUNT(*) >= 2
+    HAVING COUNT(*) >= 4
 ),
 suspension_status AS (
     SELECT 
