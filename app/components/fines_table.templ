@@ -27,7 +27,7 @@ templ FinesTable(cards []types.TableCard, isSuspended bool) {
 				</svg>
 				<span>No outstanding cards</span>
 			</div>
-		} else if len(cards) >=2 || isSuspended {
+		} else if len(cards) >= 4 || isSuspended {
 			<div role="alert" class="alert bg-error">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
